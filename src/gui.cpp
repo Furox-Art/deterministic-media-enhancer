@@ -22,7 +22,7 @@ int main(int argc, char** argv) {
     scale->addItems({"1","2","4","8"});
     scale->setCurrentText("2");
     auto* preset = new QComboBox;
-    preset->addItems({"auto","clean","detail","resize","restore","denoise","regional","deblur","wavelet","temporal","stabilize"});
+    preset->addItems({"auto","clean","detail","resize","restore","denoise","regional","deblur","wavelet","temporal","stabilize","multiframe"});
     auto* fps = new QComboBox;
     fps->addItems({"keep","30","60","120"});
     auto* run = new QPushButton("Enhance");

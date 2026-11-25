@@ -1,6 +1,6 @@
 #include <algorithm>
 #include "output_guard.hpp"
-#include "video.hpp"
+#include "multiframe.hpp"
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
@@ -40,7 +40,7 @@ bool one_of(const std::string& ext, std::initializer_list<const char*> values) {
 int main(int argc, char** argv) {
     try {
         if (argc == 2 && std::string(argv[1]) == "--version") {
-            std::cout << "DME 0.5.0\n"; return 0;
+            std::cout << "DME 0.6.0\n"; return 0;
         }
         if (argc >= 3 && argc <= 4 && std::string(argv[1]) == "--analyze") {
             fs::path input=fs::absolute(argv[2]);
@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
             return 0;
         }
         if (argc < 3 || argc > 6) {
-            std::cerr << "Usage: dme INPUT OUTPUT [1|2|4|8] [auto|clean|detail|resize|restore|denoise|regional|deblur|wavelet|temporal|stabilize] [keep|30|60|120]\n"
+            std::cerr << "Usage: dme INPUT OUTPUT [1|2|4|8] [auto|clean|detail|resize|restore|denoise|regional|deblur|wavelet|temporal|stabilize|multiframe] [keep|30|60|120]\n"
                       << "Output: PNG for images; MKV (lossless FFV1/FLAC) or MP4 (H.264/AAC) for video.\n";
             return 2;
         }
@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
         const std::string fps_arg = argc == 6 ? argv[5] : "keep";
         if(!one_of(fps_arg,{"keep","30","60","120"})) throw std::runtime_error("Invalid target FPS");
         const int fps=fps_arg=="keep"?0:std::stoi(fps_arg);
-        if (!one_of(factor, {"1","2","4","8"}) || !one_of(preset, {"auto","clean","detail","resize","restore","denoise","regional","deblur","wavelet","temporal","stabilize"}))
+        if (!one_of(factor, {"1","2","4","8"}) || !one_of(preset, {"auto","clean","detail","resize","restore","denoise","regional","deblur","wavelet","temporal","stabilize","multiframe"}))
             throw std::runtime_error("Invalid scale or preset.");
         const auto in = extension(input), out = extension(output);
         const bool image = one_of(in,{".png",".jpg",".jpeg",".bmp",".tif",".tiff",".webp"});
@@ -76,8 +76,10 @@ int main(int argc, char** argv) {
             throw std::runtime_error("Unsupported input extension.");
         if ((image && out != ".png") || (!image && !one_of(out,{".mkv",".mp4"})))
             throw std::runtime_error("Unsupported output extension for media type.");
-        if(image&&(fps||preset=="temporal"||preset=="stabilize"))
+        if(image&&(fps||preset=="temporal"||preset=="stabilize"||preset=="multiframe"))
             throw std::runtime_error("Video-only operation requested for an image");
+        if(preset=="multiframe"&&(factor!="2"||fps))
+            throw std::runtime_error("Multiframe requires 2x scale and keep FPS");
         dme::Timeline source;
         if(!image) source=dme::inspect_video(input.string());
         std::string filter;
@@ -120,7 +122,8 @@ int main(int argc, char** argv) {
         return execute(std::move(args));
         };
         auto candidate=stage.file("candidate"+out);
-        if(int code=encode(filter,candidate);code!=0) return code;
+        if(preset=="multiframe")dme::multiframe_encode(input.string(),candidate.string(),source,out==".mkv");
+        else if(int code=encode(filter,candidate);code!=0) return code;
         if(image){
             auto result=dme::decode_full_image(candidate);
             if(preset=="auto"&&filter!=dme::resize_chain(factor)){

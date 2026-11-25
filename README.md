@@ -2,7 +2,7 @@
 
 Local, offline image and video enhancement without trained models, cloud services, telemetry or usage fees.
 
-## v0.5.0 — temporal video restoration and timeline validation
+## v0.6.0 — motion-aligned multi-frame detail fusion
 
 C++17 CLI uses FFmpeg CPU filters. Supported scales: 1x, 2x, 4x, 8x. Image output: PNG. Video output: FFV1/FLAC MKV or H.264/AAC MP4. Existing outputs are never intentionally overwritten. Qt 6 GUI source is optional; the CLI is the tested application.
 
@@ -19,6 +19,7 @@ C++17 CLI uses FFmpeg CPU filters. Supported scales: 1x, 2x, 4x, 8x. Image outpu
 | wavelet | Three-level wavelet denoising |
 | temporal | Five-frame adaptive temporal denoising (video only) |
 | stabilize | Block-motion stabilization (video only) |
+| multiframe | Half-pixel global registration and conservative 2x sample fusion (video only) |
 
 ## Build on Linux
 
@@ -33,6 +34,7 @@ ctest --test-dir build --output-on-failure
 ./build/dme input.mp4 output.mkv 2 restore
 ./build/dme input.mp4 output60.mkv 1 temporal 60
 ./build/dme input.mp4 stable.mkv 1 stabilize keep
+./build/dme input.mp4 multi.mkv 2 multiframe keep
 ./build/dme-gui # if Qt6 Widgets was found
 ```
 
@@ -48,6 +50,12 @@ Output is encoded in a private temporary directory beside the destination and pu
 
 The optional fifth positional argument after input/output/scale/preset selects `keep` (default), `30`, `60` or `120` FPS. Motion-compensated interpolation uses FFmpeg MCI with scene-change detection, adaptive overlapping block compensation, and cloned end padding trimmed to the expected frame count. Interpolation runs at source resolution before spatial filtering and scaling; synthesized frames are estimates. FPS conversion currently accepts only near-zero-start constant-rate video with at least three frames and dimensions of at least 32x32; down-conversion is not supported. Timestamp validation is based on microsecond integer arithmetic with a 2 ms cadence tolerance; unusual timestamps, geometry changes and missing timing information may be rejected. Full-frame FFprobe metadata is capped at 64 MiB; exceptionally long videos can exceed that limit. The temporal and stabilization presets use 8-bit YUV 4:4:4. Stabilization can create mirrored edge content and interpolation can introduce motion artifacts. The timeline guard is structural, not a perceptual or A/V synchronization guarantee.
 
+## Multi-frame detail fusion
+
+The experimental `multiframe` preset is implemented in C++ using integer arithmetic for registration, interpolation and blending. A three-frame sliding window aligns neighboring frames using global translations searched on an integer and half-pixel grid, with bidirectional checks. Only shifts providing a new sampling phase and sufficiently low matching error are eligible. The 2x output starts from a fixed-point cubic interpolation; compatible neighboring samples contribute to missing pixel phases with a 2:1 weight per observation relative to the baseline. A per-channel residual threshold rejects incompatible samples. Original center-frame RGB samples at even/even coordinates remain untouched before output encoding. If no neighbor qualifies, cubic interpolation is used. This is not a general optical-flow or iterative super-resolution solver and cannot guarantee better quality than Lanczos or recover all lost detail.
+
+Currently limited to near-zero-start CFR videos, 2x spatial scale, original FPS, at least three frames, 32x32 minimum and 2073600 source pixels maximum. Input is decoded to 8-bit RGB without automatic rotation; output uses the existing video encoders and timeline guard. HDR, alpha, rotation metadata, nonrigid motion and large camera motion are not supported by the fusion model. The input is streamed through pipes and memory is bounded by the three source frames and one upscaled output frame. JSON reports accepted neighbors and fused pixels. The test suite uses Python 3 to generate synthetic fixtures.
+
 ## Determinism
 
 CPU-only, restricted FFmpeg CPU flags, single-thread processing, bitexact flags, fixed presets, source metadata removed, file/pipe protocol whitelist. Reproducibility tests compare whole-file bytes and analysis reports across repeated runs in the same environment. Tests also check expected decisions on synthetic patterns. Cross-version/hardware bit identity is not guaranteed. Upscaling is not recovery of lost detail. PNG/FFV1 outputs are losslessly encoded after pixel conversion and filters, not necessarily source-preserving. MP4 is lossy. Alpha processing, HDR/color management, orientation, VFR, and uncommon media require further validation. Audio is re-encoded; subtitles and metadata are not preserved.
@@ -55,7 +63,7 @@ CPU-only, restricted FFmpeg CPU flags, single-thread processing, bitexact flags,
 ## Planned features
 
 - User-defined ROI and scene-adaptive restoration, chroma/alpha and temporal quality validation.
-- Blind/motion deconvolution, BM3D and multi-frame restoration.
+- Blind/motion deconvolution, BM3D and more advanced local motion and iterative multi-frame reconstruction.
 - Preview, batch jobs, progress, cancellation and advanced controls.
 - Advanced scene-aware motion restoration, color management and higher bit-depth validation.
 - Reproducible toolchain and cross-platform builds; GPU only after determinism validation.
