@@ -16,6 +16,14 @@ This skill is the agent interface to a local C++17/FFmpeg engine. Do not generat
 5. Parse the JSON result. A successful status requires exit code zero, validated output and a SHA-256 hash. Report any baseline fallback and the actual limitations. If the agent can view local images, inspect the output visually; for video inspect representative frames. Do not claim visual QA if unavailable.
 6. When exact repeatability is requested, use verify-repeat with the same input/options. It renders twice in a temporary directory and compares SHA-256 digests. A matching hash verifies only the current engine, toolchain and execution environment, not every machine.
 
+## Batch work
+
+For multiple explicitly authorized files, create a local JSON manifest as described in references/commands.md. Run batch with --dry-run first, then execute the same manifest. Preserve list order and explicit targets. A preflight error prevents every render; a runtime error does not stop later jobs. Report individual successes and failures, not just the aggregate. Do not delete or overwrite successful outputs to retry; create a new manifest for failed jobs only after resolving the cause.
+
+## Execution limits
+
+For slow or large media use the global `--timeout-seconds N` option before the command, within 1–86400 seconds. Default: 3600 seconds per subprocess. Do not silently retry indefinitely. Malformed, contradictory or non-finite structured reports fail the job. Report the actual error and keep verified outputs from earlier batch jobs. Use the trusted installed engine and FFmpeg executables only.
+
 ## Commands
 
 Run from the skill directory, or use the absolute path to its scripts/agent.py.

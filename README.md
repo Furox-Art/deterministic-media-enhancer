@@ -2,7 +2,7 @@
 
 An AI agent skill for local, offline image and video enhancement without trained models, cloud services, telemetry or usage fees. No desktop application or GUI. Start with [SKILL.md](SKILL.md).
 
-## v0.7.0 — agent skill and machine-readable verification
+## v0.9.0 — batch orchestration, strict reports and bounded execution
 
 C++17 CLI uses FFmpeg CPU filters. Supported scales: 1x, 2x, 4x, 8x. Image output: PNG. Video output: FFV1/FLAC MKV or H.264/AAC MP4. Existing outputs are never intentionally overwritten. The CLI is the underlying engine for the agent skill; the supported agent entry point is scripts/agent.py.
 
@@ -41,6 +41,16 @@ ctest --test-dir build --output-on-failure
 ## Agent interface
 
 See SKILL.md and references/commands.md. Use python3 scripts/agent.py doctor, analyze, enhance or verify-repeat. The wrapper emits one JSON object, reports nonzero failure status, computes SHA-256 of source and output, and supports exact two-run hash comparison. No automatic software installation, network access or output overwrite. The wrapper defaults to 1x and original FPS; the native CLI retains its previous 2x default for compatibility.
+
+## Batch jobs
+
+Use `python3 scripts/agent.py batch --manifest jobs.json --dry-run` to validate an explicit ordered JSON job list without rendering, then omit `--dry-run` to execute. See references/commands.md for the manifest format. Invalid plans (including duplicate canonical targets and existing outputs) abort before any render. Runtime errors are isolated per job; remaining jobs continue, and any failure yields a nonzero exit. Successful outputs remain. The wrapper stages each output privately on the destination filesystem and publishes with a no-replace hard link only after source/engine hashes and required reports pass. Source/engine hash checks detect persistent changes, not adversarial changes restored between checks. No recursive discovery, arbitrary shell commands or automatic output renaming. No universal quality or cross-machine reproducibility guarantee.
+
+## Agent verification and execution limits
+
+Structured reports reject duplicate JSON keys, non-finite numbers (including exponent overflow), malformed objects, conflicting required guards and invalid field types. Every image preset now checks decoded output dimensions against the decoded source dimensions times the selected scale; automatic non-baseline image outputs must also carry a consistent luma/fallback report. Video jobs require exactly one accepted timeline report. The wrapper records SHA-256 for the engine and the FFmpeg/FFprobe executables and checks their hashes again before publication; repeat verification compares these identities as well as source and output hashes. This does not fingerprint dynamically loaded libraries, the operating system or hardware.
+
+The optional global argument `--timeout-seconds` (default 3600, range 1–86400) limits each local subprocess, not the entire batch. Captured stdout and stderr together are limited to 8 MiB per subprocess. On timeout, output overflow or keyboard interruption, the wrapper kills the subprocess group and reaps the parent. Temporary staging is cleaned and unverified outputs are not published. Normal child processes are covered; this is not an operating-system security sandbox. Source files must be trusted and explicitly authorized; symlink races, adversarial source changes restored between checks and indirect local demuxer access are not fully isolated.
 
 ## Adaptive analysis
 

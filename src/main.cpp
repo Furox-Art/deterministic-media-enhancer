@@ -40,7 +40,7 @@ bool one_of(const std::string& ext, std::initializer_list<const char*> values) {
 int main(int argc, char** argv) {
     try {
         if (argc == 2 && std::string(argv[1]) == "--version") {
-            std::cout << "DME 0.7.0\n"; return 0;
+            std::cout << "DME 0.9.0\n"; return 0;
         }
         if (argc >= 3 && argc <= 4 && std::string(argv[1]) == "--analyze") {
             fs::path input=fs::absolute(argv[2]);
@@ -82,6 +82,14 @@ int main(int argc, char** argv) {
             throw std::runtime_error("Multiframe requires 2x scale and keep FPS");
         dme::Timeline source;
         if(!image) source=dme::inspect_video(input.string());
+        int image_width=0,image_height=0;
+        if(image){
+            auto original=dme::decode_full_image(input);
+            image_width=original.w;image_height=original.h;
+            auto scale=std::stoi(factor);
+            if(static_cast<std::uint64_t>(image_width)*image_height*scale*scale>dme::max_image_pixels)
+                throw std::runtime_error("Requested image output exceeds QA pixel limit");
+        }
         std::string filter;
         if (preset == "auto") {
             auto m=dme::analyze(input.string(),image);
@@ -126,6 +134,8 @@ int main(int argc, char** argv) {
         else if(int code=encode(filter,candidate);code!=0) return code;
         if(image){
             auto result=dme::decode_full_image(candidate);
+            if(result.w!=image_width*std::stoi(factor)||result.h!=image_height*std::stoi(factor))
+                throw std::runtime_error("Image output dimensions mismatch");
             if(preset=="auto"&&filter!=dme::resize_chain(factor)){
                 auto baseline=stage.file("baseline"+out);
                 if(int code=encode(dme::resize_chain(factor),baseline);code!=0)return code;
@@ -137,6 +147,9 @@ int main(int argc, char** argv) {
                     std::cerr<<"{\"fallback\":\"baseline\",\"reason\":\"full_image_guard\"}\n";
                 }
             }
+            std::cerr<<"{\"image_guard\":\"geometry\",\"accepted\":true,\"input_width\":"<<image_width
+                <<",\"input_height\":"<<image_height<<",\"output_width\":"<<result.w
+                <<",\"output_height\":"<<result.h<<"}\n";
         } else {
             int code=execute({"ffmpeg","-nostdin","-hide_banner","-loglevel","error","-xerror",
                 "-cpuflags","0","-threads","1","-protocol_whitelist","file,pipe","-i",candidate.string(),
