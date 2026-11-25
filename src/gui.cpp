@@ -22,7 +22,7 @@ int main(int argc, char** argv) {
     scale->addItems({"1","2","4","8"});
     scale->setCurrentText("2");
     auto* preset = new QComboBox;
-    preset->addItems({"clean","detail","resize"});
+    preset->addItems({"auto","clean","detail","resize","restore","denoise"});
     auto* run = new QPushButton("Enhance");
     auto* status = new QLabel("Ready — local CPU processing");
     status->setWordWrap(true);
