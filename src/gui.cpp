@@ -22,7 +22,9 @@ int main(int argc, char** argv) {
     scale->addItems({"1","2","4","8"});
     scale->setCurrentText("2");
     auto* preset = new QComboBox;
-    preset->addItems({"auto","clean","detail","resize","restore","denoise","regional","deblur","wavelet"});
+    preset->addItems({"auto","clean","detail","resize","restore","denoise","regional","deblur","wavelet","temporal","stabilize"});
+    auto* fps = new QComboBox;
+    fps->addItems({"keep","30","60","120"});
     auto* run = new QPushButton("Enhance");
     auto* status = new QLabel("Ready — local CPU processing");
     status->setWordWrap(true);
@@ -31,6 +33,7 @@ int main(int argc, char** argv) {
     layout->addRow(save,output);
     layout->addRow("Scale",scale);
     layout->addRow("Preset",preset);
+    layout->addRow("Video FPS",fps);
     layout->addRow(run);
     layout->addRow(status);
     QObject::connect(open,&QPushButton::clicked,[&]{
@@ -44,7 +47,7 @@ int main(int argc, char** argv) {
     QObject::connect(run,&QPushButton::clicked,[&]{
         run->setEnabled(false); status->setText("Processing...");
         process->start(QCoreApplication::applicationDirPath()+"/dme",
-            {input->text(),output->text(),scale->currentText(),preset->currentText()});
+            {input->text(),output->text(),scale->currentText(),preset->currentText(),fps->currentText()});
     });
     QObject::connect(process,&QProcess::finished,[&](int code,QProcess::ExitStatus result){
         run->setEnabled(true);

@@ -2,7 +2,7 @@
 
 Local, offline image and video enhancement without trained models, cloud services, telemetry or usage fees.
 
-## v0.4.0 — regional restoration and output validation
+## v0.5.0 — temporal video restoration and timeline validation
 
 C++17 CLI uses FFmpeg CPU filters. Supported scales: 1x, 2x, 4x, 8x. Image output: PNG. Video output: FFV1/FLAC MKV or H.264/AAC MP4. Existing outputs are never intentionally overwritten. Qt 6 GUI source is optional; the CLI is the tested application.
 
@@ -17,6 +17,8 @@ C++17 CLI uses FFmpeg CPU filters. Supported scales: 1x, 2x, 4x, 8x. Image outpu
 | regional | Threshold-based local smoothing, stronger in flat regions |
 | deblur | Damped approximate inverse of a fixed binomial blur kernel plus wider high-boost stage |
 | wavelet | Three-level wavelet denoising |
+| temporal | Five-frame adaptive temporal denoising (video only) |
+| stabilize | Block-motion stabilization (video only) |
 
 ## Build on Linux
 
@@ -29,6 +31,8 @@ ctest --test-dir build --output-on-failure
 ./build/dme --analyze input.jpg 2
 ./build/dme input.jpg output.png 2 auto
 ./build/dme input.mp4 output.mkv 2 restore
+./build/dme input.mp4 output60.mkv 1 temporal 60
+./build/dme input.mp4 stable.mkv 1 stabilize keep
 ./build/dme-gui # if Qt6 Widgets was found
 ```
 
@@ -38,7 +42,11 @@ Analyzes a native-resolution central crop (up to 512x512 pixels) in 8-bit graysc
 
 ## Output integrity and limits
 
-Output is encoded in a private temporary directory beside the destination and published via an atomic hard link without overwriting an existing file. Failed encodes are not published. Output filesystems must support hard links. Still images are fully decoded for integrity with a 64 Mi-pixel limit; automatic non-baseline outputs receive a full-image luma comparison and may fall back to Lanczos. Manual presets are not overridden. Videos are decoded in full to detect decoder errors, not to certify visual quality, motion consistency or audio fidelity. Verification adds processing time. The new regional, deblur and wavelet filters explicitly convert to 8-bit YUV 4:4:4 and are not suited to alpha or HDR preservation. Deblur assumes a fixed small blur kernel; it is not blind or general motion deconvolution. The regional preset is locally threshold-adaptive, not a user-defined ROI editor.
+Output is encoded in a private temporary directory beside the destination and published via an atomic hard link without overwriting an existing file. Failed encodes are not published. Output filesystems must support hard links. Still images are fully decoded for integrity with a 64 Mi-pixel limit; automatic non-baseline outputs receive a full-image luma comparison and may fall back to Lanczos. Manual presets are not overridden. Videos are decoded in full to detect decoder errors. Source and output video timelines are checked for dimensions, frame count, duration and frame cadence before publication. This does not certify visual quality, motion consistency or audio fidelity. Verification adds processing time. The new regional, deblur and wavelet filters explicitly convert to 8-bit YUV 4:4:4 and are not suited to alpha or HDR preservation. Deblur assumes a fixed small blur kernel; it is not blind or general motion deconvolution. The regional preset is locally threshold-adaptive, not a user-defined ROI editor.
+
+## Video processing
+
+The optional fifth positional argument after input/output/scale/preset selects `keep` (default), `30`, `60` or `120` FPS. Motion-compensated interpolation uses FFmpeg MCI with scene-change detection, adaptive overlapping block compensation, and cloned end padding trimmed to the expected frame count. Interpolation runs at source resolution before spatial filtering and scaling; synthesized frames are estimates. FPS conversion currently accepts only near-zero-start constant-rate video with at least three frames and dimensions of at least 32x32; down-conversion is not supported. Timestamp validation is based on microsecond integer arithmetic with a 2 ms cadence tolerance; unusual timestamps, geometry changes and missing timing information may be rejected. Full-frame FFprobe metadata is capped at 64 MiB; exceptionally long videos can exceed that limit. The temporal and stabilization presets use 8-bit YUV 4:4:4. Stabilization can create mirrored edge content and interpolation can introduce motion artifacts. The timeline guard is structural, not a perceptual or A/V synchronization guarantee.
 
 ## Determinism
 
@@ -49,7 +57,7 @@ CPU-only, restricted FFmpeg CPU flags, single-thread processing, bitexact flags,
 - User-defined ROI and scene-adaptive restoration, chroma/alpha and temporal quality validation.
 - Blind/motion deconvolution, BM3D and multi-frame restoration.
 - Preview, batch jobs, progress, cancellation and advanced controls.
-- Frame interpolation, stabilization, color management and higher bit-depth validation.
+- Advanced scene-aware motion restoration, color management and higher bit-depth validation.
 - Reproducible toolchain and cross-platform builds; GPU only after determinism validation.
 - License selection before public distribution.
 
