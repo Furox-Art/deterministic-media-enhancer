@@ -2,13 +2,13 @@
 
 Local, offline image and video enhancement without trained models, cloud services, telemetry or usage fees.
 
-## v0.2.0 — adaptive CPU prototype
+## v0.3.0 — deterministic candidate optimizer
 
 C++17 CLI uses FFmpeg CPU filters. Supported scales: 1x, 2x, 4x, 8x. Image output: PNG. Video output: FFV1/FLAC MKV or H.264/AAC MP4. Existing outputs are never intentionally overwritten. Qt 6 GUI source is optional; the CLI is the tested application.
 
 | Preset | Operation |
 | --- | --- |
-| auto (default) | Sample-based defect analysis and conservative filter selection |
+| auto (default) | Sample-based defect analysis, candidate comparison and regression guards |
 | clean | Spatial denoising, scaling, unsharp |
 | detail | Scaling and unsharp |
 | resize | Lanczos scaling only |
@@ -31,7 +31,7 @@ ctest --test-dir build --output-on-failure
 
 ## Adaptive analysis
 
-Analyzes a native-resolution central crop (up to 512x512 pixels) in 8-bit grayscale. For video, samples every 15th decoded frame, at most 8 frames from the first 10 seconds. Integer-based metrics estimate high-frequency residuals in locally flat regions, aligned 8-pixel discontinuities, edge gradients and curvature. Median metrics select a fixed filter chain with documented thresholds in src/analysis.hpp. Analysis JSON exposes the exact filter chain. These are heuristic proxies: fine textures, nonaligned blocks, color artifacts and late scene changes may be missed or misclassified. No guarantee of quality improvement or parameter optimality.
+Analyzes a native-resolution central crop (up to 512x512 pixels) in 8-bit grayscale. For video, samples every 15th decoded frame, at most 8 frames from the first 10 seconds. Integer-based metrics estimate high-frequency residuals in locally flat regions, aligned 8-pixel discontinuities, edge gradients and curvature. Median metrics determine eligible candidates. The optimizer (src/optimizer.hpp) evaluates a bounded, fixed-order set of candidate filters on up to four native-resolution 384x384 central crops, then compares them against the unfiltered samples. Integer scoring rewards measured defect reduction; guards limit mean absolute deviation, edge loss/gain, clipping, and increases in noise or block artifacts. A candidate must pass every sampled frame and beat the baseline score by more than 15 points. Ties preserve the earlier candidate. Otherwise, only Lanczos scaling is applied. JSON exposes candidate scores, acceptance decisions, and the selected chain. Candidate filters operate before scaling; the final full-resolution output is not independently scored. The sample crop and grayscale metrics cannot establish full-frame, color, temporal or perceptual quality. These are heuristic proxies: fine textures, nonaligned blocks, color artifacts and late scene changes may be missed or misclassified. No guarantee of quality improvement or parameter optimality.
 
 ## Determinism
 
@@ -39,7 +39,7 @@ CPU-only, restricted FFmpeg CPU flags, single-thread processing, bitexact flags,
 
 ## Planned features
 
-- Candidate comparison and quality regression rejection, region/scene adaptive restoration.
+- Region/scene adaptive restoration, full-output quality validation and temporal consistency checks.
 - Deblurring, BM3D and multi-frame restoration.
 - Preview, batch jobs, progress, cancellation and advanced controls.
 - Frame interpolation, stabilization, color management and higher bit-depth validation.

@@ -1,5 +1,5 @@
 #include <algorithm>
-#include "analysis.hpp"
+#include "optimizer.hpp"
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
@@ -39,7 +39,7 @@ bool one_of(const std::string& ext, std::initializer_list<const char*> values) {
 int main(int argc, char** argv) {
     try {
         if (argc == 2 && std::string(argv[1]) == "--version") {
-            std::cout << "DME 0.2.0\n"; return 0;
+            std::cout << "DME 0.3.0\n"; return 0;
         }
         if (argc >= 3 && argc <= 4 && std::string(argv[1]) == "--analyze") {
             fs::path input=fs::absolute(argv[2]);
@@ -51,7 +51,7 @@ int main(int argc, char** argv) {
             if(!still && !one_of(ext,{".mp4",".mkv",".mov",".avi",".webm"}))
                 throw std::runtime_error("Unsupported input extension.");
             auto m=dme::analyze(input.string(),still);
-            std::cout<<dme::report(m,dme::plan(m,factor))<<'\n';
+            std::cout<<dme::optimization_report(m,dme::optimize(input.string(),still,m,factor))<<'\n';
             return 0;
         }
         if (argc < 3 || argc > 5) {
@@ -75,8 +75,9 @@ int main(int argc, char** argv) {
         std::string filter;
         if (preset == "auto") {
             auto m=dme::analyze(input.string(),image);
-            filter=dme::plan(m,factor);
-            std::cerr<<dme::report(m,filter)<<'\n';
+            auto opt=dme::optimize(input.string(),image,m,factor);
+            filter=opt.filter;
+            std::cerr<<dme::optimization_report(m,opt)<<'\n';
         } else {
             if (preset == "clean") filter = "hqdn3d=1.5:1.5:0:0,";
             if (preset == "denoise") filter = "nlmeans=s=2:p=5:r=9,";
