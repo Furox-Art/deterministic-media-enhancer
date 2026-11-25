@@ -1,6 +1,6 @@
 # Agent command reference
 
-All commands are local and offline after dependencies are installed. Linux is the tested platform.
+All commands are local and offline after dependencies are installed. Linux is the tested platform. The native engine uses Rust and its standard library; Cargo builds offline without external crates.
 
 | Command | Purpose |
 | --- | --- |
@@ -23,11 +23,13 @@ denoise: non-local means.
 regional: local threshold-based smoothing.
 deblur: approximate fixed-kernel inverse filtering.
 wavelet: three-level wavelet denoising.
+patch: experimental single-patch transform denoising using the BM3D basic estimator (group=1).
+bm3d: experimental grouped basic estimator (group=4), not two-pass BM3D. Both require at least 32x32 pixels, convert to 8-bit YUV 4:4:4, operate on luma and may remove real texture. Neither is included in auto.
 temporal: temporal averaging (video only).
 stabilize: block-motion stabilization (video only).
 multiframe: experimental 2x video fusion; requires original FPS, near-zero-start CFR, at least 3 frames, at most 2073600 input pixels, dimensions >=32x32.
 
-Scale: 1, 2, 4, 8. FPS: keep, 30, 60, 120 (video only, up-conversion for supported CFR sources). Output: PNG for images; MKV or MP4 for video. Inputs: PNG/JPEG/BMP/TIFF/WebP or MP4/MKV/MOV/AVI/WebM. A supported extension does not guarantee that every variant is decodable.
+Scale: 1, 2, 4, 8. FPS: keep, 30, 60, 120 (video only, up-conversion for supported CFR sources). Output: PNG for images; MKV or MP4 for video. Inputs: PNG/JPEG/BMP/TIFF/WebP or MP4/MKV/MOV/AVI/WebM. A supported extension does not guarantee that every variant is decodable. Every external media input is restricted to the demuxer family matching its extension; this is not an OS sandbox. Doctor checks the expected engine version and FFmpeg capabilities.
 
 ## Results and limits
 

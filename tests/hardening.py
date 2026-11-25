@@ -53,6 +53,13 @@ with tempfile.TemporaryDirectory(prefix="dme hardening ") as tmp:
     reject_report(src,"png",geometry.replace('"output_width":64','"output_width":65'),"Invalid image geometry")
     reject_report(src,"png",geometry+"\n"+geometry,"duplicate")
     reject_report(src,"png",'[1,2]',"must be an object")
+    # FFmpeg diagnostics are distinct from JSON arrays; old engine is not ready.
+    make_fake("sys.stderr.write('[decoder @ 0x123abc] Format not on whitelist\\n')\nsys.exit(2)\n")
+    response=invoke("enhance","--input",src,"--output",root/"log.png","--preset","resize",executable=fake,ok=False)
+    assert "Format not on whitelist" in response["diagnostics"][0],response
+    assert not (root/"log.png").exists()
+    stale=invoke("doctor",executable=fake,ok=False)
+    assert stale["engine_ready"] and not stale["engine_version_match"],stale
     manifest=root/"jobs.json"
     manifest.write_text('{"jobs":[{"input":"image.png","output":"never.png","scale":NaN}]}')
     assert "Non-finite" in invoke("batch","--manifest",manifest,ok=False)["error"]

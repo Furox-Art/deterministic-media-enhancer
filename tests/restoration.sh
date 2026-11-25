@@ -6,7 +6,7 @@ trap 'rm -rf "$tmp"' EXIT
 ffmpeg -v error -f lavfi -i testsrc2=size=160x120:rate=5 -frames:v 1 -threads 1 "$tmp/input.png"
 ffmpeg -v error -f lavfi -i testsrc2=size=160x120:rate=5 -t 1 -threads 1 -c:v ffv1 "$tmp/input.mkv"
 for ext in png mkv; do
-  for preset in regional deblur wavelet; do
+  for preset in regional deblur wavelet patch bm3d; do
     "$dme" "$tmp/input.$ext" "$tmp/a.$ext" 2 "$preset"
     "$dme" "$tmp/input.$ext" "$tmp/b.$ext" 2 "$preset"
     cmp "$tmp/a.$ext" "$tmp/b.$ext"

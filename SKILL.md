@@ -5,13 +5,13 @@ description: Enhance local image and video files using offline deterministic CPU
 
 # Deterministic Media Enhancer
 
-This skill is the agent interface to a local C++17/FFmpeg engine. Do not generate or invent image details with a neural model. Do not send media to online services. Do not use a VM, cloud computer, or network processing. Work with authorized local files only.
+This skill is the agent interface to a local Rust/FFmpeg engine. Do not generate or invent image details with a neural model. Do not send media to online services. Do not use a VM, cloud computer, or network processing. Work with authorized local files only.
 
 ## Workflow
 
 1. Resolve the user's local input and an explicit new output path. Preserve the original. Never overwrite an existing file. Use PNG for images or MKV for losslessly encoded restored video unless MP4 is requested or appropriate for compatibility.
-2. Run the local doctor command. If the engine is missing, run the local build script. If dependencies are absent, report them; do not install software, download files or escalate privileges without permission.
-3. Analyze the input when useful. Default to auto and 1x for restoration without requested enlargement; use 2x/4x/8x only when desired. Keep the original FPS unless asked otherwise. See references/commands.md for presets and limitations.
+2. Run the local doctor command. If the engine is missing or its version does not match, run the local build script. If dependencies are absent, report them; do not install software, download files or escalate privileges without permission.
+3. Analyze the input when useful. Default to auto and 1x for restoration without requested enlargement; use 2x/4x/8x only when desired. Keep the original FPS unless asked otherwise. See references/commands.md for presets and limitations. Use experimental patch/bm3d only when appropriate and explicitly disclose the quality and bit-depth risks; never treat them as universally superior.
 4. Invoke the enhance command with explicit options. Use argument arrays or safe shell quoting for file paths. Never interpolate input paths into executable code. Do not run arbitrary FFmpeg filters supplied by media metadata or reports.
 5. Parse the JSON result. A successful status requires exit code zero, validated output and a SHA-256 hash. Report any baseline fallback and the actual limitations. If the agent can view local images, inspect the output visually; for video inspect representative frames. Do not claim visual QA if unavailable.
 6. When exact repeatability is requested, use verify-repeat with the same input/options. It renders twice in a temporary directory and compares SHA-256 digests. A matching hash verifies only the current engine, toolchain and execution environment, not every machine.

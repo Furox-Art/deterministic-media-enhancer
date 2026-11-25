@@ -1,0 +1,13 @@
+[package]
+name = "deterministic-media-enhancer"
+version = "1.0.0-rc1"
+edition = "2021"
+rust-version = "1.85"
+publish = false
+
+[[bin]]
+name = "dme"
+path = "src/main.rs"
+
+[profile.release]
+overflow-checks = true

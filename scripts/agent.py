@@ -5,6 +5,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import selectors
 import signal
 import time
@@ -16,8 +17,10 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_ENGINE = ROOT / "build" / "skill" / "dme"
+EXPECTED_ENGINE = "DME 1.0.0-rc1"
+FFMPEG_LOG = re.compile(r"^\[[^\]\r\n]+ @ 0x[0-9a-fA-F]+\]")
 PRESETS = ("auto", "clean", "detail", "resize", "restore", "denoise",
-           "regional", "deblur", "wavelet", "temporal", "stabilize", "multiframe")
+           "regional", "deblur", "wavelet", "patch", "bm3d", "temporal", "stabilize", "multiframe")
 IMAGES = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
 VIDEOS = {".mp4", ".mkv", ".mov", ".avi", ".webm"}
 VIDEO_ONLY = {"temporal", "stabilize", "multiframe"}
@@ -115,7 +118,9 @@ def strict_json(raw):
 def split_reports(raw):
     reports, diagnostics = [], []
     for line in raw.splitlines():
-        if line.lstrip().startswith(("{", "[")):
+        if FFMPEG_LOG.match(line.lstrip()):
+            diagnostics.append(line)
+        elif line.lstrip().startswith(("{", "[")):
             try:
                 value = strict_json(line)
             except ValueError as exc:
@@ -198,20 +203,26 @@ def validate_reports(reports, image, scale, fps, preset):
 
 
 def doctor(engine):
-    names = ("ffmpeg", "ffprobe", "cmake", "c++")
+    names = ("ffmpeg", "ffprobe", "cargo", "rustc")
     tools = {name: shutil.which(name) for name in names}
     runtime_missing = [n for n in ("ffmpeg", "ffprobe") if not tools[n]]
-    build_missing = [n for n in ("cmake", "c++") if not tools[n]]
-    filters, encoders = [], []
+    build_missing = [n for n in ("cargo", "rustc") if not tools[n]]
+    filters, encoders, demuxers, muxers = [], [], [], []
     versions = {}
     if not runtime_missing:
         versions = {n: first_line([tools[n], "-version"]) for n in ("ffmpeg", "ffprobe")}
         required = ("scale", "hqdn3d", "nlmeans", "deblock", "deband", "unsharp",
-                    "bilateral", "smartblur", "convolution", "vaguedenoiser",
+                    "bilateral", "smartblur", "convolution", "vaguedenoiser", "bm3d",
                     "atadenoise", "deshake", "minterpolate", "tpad", "trim")
         f, e = run([tools["ffmpeg"], "-hide_banner", "-filters"]), run([tools["ffmpeg"], "-hide_banner", "-encoders"])
-        if f.returncode or e.returncode:
+        d = run([tools["ffmpeg"], "-hide_banner", "-demuxers"])
+        m = run([tools["ffmpeg"], "-hide_banner", "-muxers"])
+        if any(x.returncode for x in (f, e, d, m)):
             raise JobError("FFmpeg capability check failed")
+        available_d = {name for line in d.stdout.splitlines() if len(line.split()) >= 2 and line.split()[0] == "D" for name in line.split()[1].split(",")}
+        available_m = {name for line in m.stdout.splitlines() if len(line.split()) >= 2 and line.split()[0] == "E" for name in line.split()[1].split(",")}
+        demuxers = [x for x in ("png_pipe", "jpeg_pipe", "bmp_pipe", "tiff_pipe", "webp_pipe", "matroska", "webm", "mov", "mp4", "avi", "rawvideo") if x not in available_d]
+        muxers = [x for x in ("image2", "image2pipe", "matroska", "mp4", "null", "rawvideo") if x not in available_m]
         available_f = {x.split()[1] for x in f.stdout.splitlines() if len(x.split()) >= 2}
         available_e = {x.split()[1] for x in e.stdout.splitlines() if len(x.split()) >= 2}
         filters = [x for x in required if x not in available_f]
@@ -219,11 +230,14 @@ def doctor(engine):
     ready = engine.is_file() and os.access(engine, os.X_OK)
     if ready:
         versions["engine"] = first_line([engine, "--version"])
-    ok = ready and not (runtime_missing or filters or encoders)
+    version_match = versions.get("engine") == EXPECTED_ENGINE
+    ok = ready and version_match and not (runtime_missing or filters or encoders or demuxers or muxers)
     return {"status": "ok" if ok else "error", "operation": "doctor",
             "engine_ready": ready, "engine": str(engine),
             "tools": tools, "versions": versions, "missing_runtime": runtime_missing,
-            "missing_build": build_missing, "missing_filters": filters, "missing_encoders": encoders}
+            "missing_build": build_missing, "missing_filters": filters, "missing_encoders": encoders,
+            "missing_demuxers": demuxers, "missing_muxers": muxers,
+            "expected_engine_version": EXPECTED_ENGINE, "engine_version_match": version_match}
 
 
 def media_input(raw):
