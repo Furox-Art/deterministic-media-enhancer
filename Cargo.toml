@@ -3,6 +3,7 @@ name = "deterministic-media-enhancer"
 version = "1.0.0-rc1"
 edition = "2021"
 rust-version = "1.85"
+license = "MIT"
 publish = false
 
 [[bin]]

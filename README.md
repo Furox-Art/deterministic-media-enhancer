@@ -88,6 +88,9 @@ CPU-only, restricted FFmpeg CPU flags, single-thread processing, bitexact flags,
 - Agent-driven progress, cancellation and expanded validation.
 - Advanced scene-aware motion restoration, color management and higher bit-depth validation.
 - Reproducible toolchain and cross-platform builds; GPU only after determinism validation.
-- License selection before a stable release. The repository is publicly viewable, but no reuse/distribution license has been granted yet.
 
 No network access is needed by the application itself for local inputs. Installing dependencies and using GitHub may require internet access.
+
+## License
+
+[MIT](LICENSE).
