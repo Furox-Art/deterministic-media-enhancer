@@ -1,5 +1,5 @@
 #include <algorithm>
-#include "optimizer.hpp"
+#include "output_guard.hpp"
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
@@ -39,7 +39,7 @@ bool one_of(const std::string& ext, std::initializer_list<const char*> values) {
 int main(int argc, char** argv) {
     try {
         if (argc == 2 && std::string(argv[1]) == "--version") {
-            std::cout << "DME 0.3.0\n"; return 0;
+            std::cout << "DME 0.4.0\n"; return 0;
         }
         if (argc >= 3 && argc <= 4 && std::string(argv[1]) == "--analyze") {
             fs::path input=fs::absolute(argv[2]);
@@ -55,7 +55,7 @@ int main(int argc, char** argv) {
             return 0;
         }
         if (argc < 3 || argc > 5) {
-            std::cerr << "Usage: dme INPUT OUTPUT [1|2|4|8] [auto|clean|detail|resize|restore|denoise]\n"
+            std::cerr << "Usage: dme INPUT OUTPUT [1|2|4|8] [auto|clean|detail|resize|restore|denoise|regional|deblur|wavelet]\n"
                       << "Output: PNG for images; MKV (lossless FFV1/FLAC) or MP4 (H.264/AAC) for video.\n";
             return 2;
         }
@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
             throw std::runtime_error("Input must exist; output must not already exist.");
         const std::string factor = argc >= 4 ? argv[3] : "2";
         const std::string preset = argc == 5 ? argv[4] : "auto";
-        if (!one_of(factor, {"1","2","4","8"}) || !one_of(preset, {"auto","clean","detail","resize","restore","denoise"}))
+        if (!one_of(factor, {"1","2","4","8"}) || !one_of(preset, {"auto","clean","detail","resize","restore","denoise","regional","deblur","wavelet"}))
             throw std::runtime_error("Invalid scale or preset.");
         const auto in = extension(input), out = extension(output);
         const bool image = one_of(in,{".png",".jpg",".jpeg",".bmp",".tif",".tiff",".webp"});
@@ -78,6 +78,9 @@ int main(int argc, char** argv) {
             auto opt=dme::optimize(input.string(),image,m,factor);
             filter=opt.filter;
             std::cerr<<dme::optimization_report(m,opt)<<'\n';
+        } else if(preset=="regional"||preset=="deblur"||preset=="wavelet"){
+            filter=(preset=="regional"?dme::regional_chain():preset=="deblur"?dme::deblur_chain():dme::wavelet_chain())
+                +","+dme::resize_chain(factor);
         } else {
             if (preset == "clean") filter = "hqdn3d=1.5:1.5:0:0,";
             if (preset == "denoise") filter = "nlmeans=s=2:p=5:r=9,";
@@ -85,10 +88,12 @@ int main(int argc, char** argv) {
             filter += "scale=iw*"+factor+":ih*"+factor+":flags=lanczos+accurate_rnd+bitexact";
             if (preset != "resize" && preset != "denoise") filter += ",unsharp=5:5:0.35:5:5:0";
         }
-        std::vector<std::string> args = {"ffmpeg","-nostdin","-hide_banner","-loglevel","error",
+        dme::OutputStage stage(output);
+        auto encode=[&](const std::string& chain,const fs::path& target){
+        std::vector<std::string> args = {"ffmpeg","-nostdin","-hide_banner","-loglevel","error","-xerror",
             "-n","-cpuflags","0","-threads","1","-fflags","+bitexact","-protocol_whitelist","file,pipe","-i",input.string(),
             "-map","0:v:0","-map_metadata","-1","-map_chapters","-1","-filter_threads","1",
-            "-vf",filter,"-threads","1","-flags:v","+bitexact"};
+            "-vf",chain,"-threads","1","-flags:v","+bitexact"};
         auto append = [&](std::initializer_list<std::string> v){args.insert(args.end(),v);};
         if (image) append({"-frames:v","1","-an","-c:v","png","-pix_fmt","rgba64be"});
         else if (out == ".mkv") append({"-map","0:a?","-c:v","ffv1","-level","3",
@@ -96,8 +101,32 @@ int main(int argc, char** argv) {
         else append({"-map","0:a?","-c:v","libx264","-preset","slow","-crf","16",
             "-pix_fmt","yuv444p","-x264-params","threads=1:lookahead-threads=1",
             "-c:a","aac","-b:a","192k","-flags:a","+bitexact","-fflags","+bitexact"});
-        args.push_back(output.string());
+        args.push_back(target.string());
         return execute(std::move(args));
+        };
+        auto candidate=stage.file("candidate"+out);
+        if(int code=encode(filter,candidate);code!=0) return code;
+        if(image){
+            auto result=dme::decode_full_image(candidate);
+            if(preset=="auto"&&filter!=dme::resize_chain(factor)){
+                auto baseline=stage.file("baseline"+out);
+                if(int code=encode(dme::resize_chain(factor),baseline);code!=0)return code;
+                auto ref=dme::decode_full_image(baseline);
+                auto guard=dme::validate_full(ref,result);
+                std::cerr<<dme::guard_report(guard)<<'\n';
+                if(!guard.accepted){
+                    candidate=baseline;
+                    std::cerr<<"{\"fallback\":\"baseline\",\"reason\":\"full_image_guard\"}\n";
+                }
+            }
+        } else {
+            int code=execute({"ffmpeg","-nostdin","-hide_banner","-loglevel","error","-xerror",
+                "-cpuflags","0","-threads","1","-protocol_whitelist","file,pipe","-i",candidate.string(),
+                "-map","0:v:0","-map","0:a?","-threads","1","-f","null","-"});
+            if(code!=0)return code;
+        }
+        stage.publish(candidate,output);
+        return 0;
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << '\n'; return 2;
     }

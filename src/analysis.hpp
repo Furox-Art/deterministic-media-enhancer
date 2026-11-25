@@ -14,7 +14,7 @@ namespace dme {
 struct Metrics {
     int frames=0, noise=0, block=100, edge=0, curvature=0, flat=0;
 };
-inline std::vector<unsigned char> capture(std::vector<std::string> args) {
+inline std::vector<unsigned char> capture(std::vector<std::string> args, size_t limit=4*1024*1024) {
     std::vector<char*> argv;
     for(auto& a:args) argv.push_back(a.data());
     argv.push_back(nullptr);
@@ -36,7 +36,7 @@ inline std::vector<unsigned char> capture(std::vector<std::string> args) {
         if(n<0 && errno==EINTR) continue;
         if(n<0){failed=true;break;}
         if(n==0) break;
-        if(out.size()+static_cast<size_t>(n)>4*1024*1024){failed=true;break;}
+        if(static_cast<size_t>(n)>limit-out.size()){failed=true;break;}
         out.insert(out.end(),buf,buf+n);
     }
     close(fd[0]);

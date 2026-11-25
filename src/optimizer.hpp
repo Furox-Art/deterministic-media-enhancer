@@ -1,5 +1,6 @@
 #pragma once
 #include "analysis.hpp"
+#include "restoration.hpp"
 
 namespace dme {
 struct Frame {int w,h; std::vector<unsigned char> pixels;};
@@ -81,9 +82,11 @@ inline std::vector<std::pair<std::string,std::string>> candidates(const Metrics&
         db="deblock=filter=weak:block=8:planes=7", sh="unsharp=5:5:0.25:5:5:0";
     if(noise){v.push_back({"denoise-mild",mild});v.push_back({"denoise-strong",strong});
         v.push_back({"nonlocal","nlmeans=s=2:p=5:r=9"});
-        v.push_back({"bilateral","bilateral=sigmaS=1.5:sigmaR=0.08:planes=1"});}
+        v.push_back({"bilateral","bilateral=sigmaS=1.5:sigmaR=0.08:planes=1"});
+        if(m.noise<1000) v.push_back({"regional",regional_chain()});}
     if(block){v.push_back({"deblock",db});v.push_back({"deblock-low",db+":alpha=0.06:beta=0.03"});}
-    if(soft){v.push_back({"sharpen-mild",sh});v.push_back({"sharpen-medium","unsharp=5:5:0.45:5:5:0"});}
+    if(soft){v.push_back({"sharpen-mild",sh});v.push_back({"sharpen-medium","unsharp=5:5:0.45:5:5:0"});
+        v.push_back({"deblur",deblur_chain()});}
     std::string combo;
     for(const auto& s:{block?db:"",noise?mild:"",soft?sh:""})if(!s.empty()){if(!combo.empty())combo+=",";combo+=s;}
     if(!combo.empty()&&std::none_of(v.begin(),v.end(),[&](const auto& x){return x.second==combo;}))
