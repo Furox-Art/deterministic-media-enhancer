@@ -1,10 +1,10 @@
 # Deterministic Media Enhancer (DME)
 
-Local, offline image and video enhancement without trained models, cloud services, telemetry or usage fees.
+An AI agent skill for local, offline image and video enhancement without trained models, cloud services, telemetry or usage fees. No desktop application or GUI. Start with [SKILL.md](SKILL.md).
 
-## v0.6.0 — motion-aligned multi-frame detail fusion
+## v0.7.0 — agent skill and machine-readable verification
 
-C++17 CLI uses FFmpeg CPU filters. Supported scales: 1x, 2x, 4x, 8x. Image output: PNG. Video output: FFV1/FLAC MKV or H.264/AAC MP4. Existing outputs are never intentionally overwritten. Qt 6 GUI source is optional; the CLI is the tested application.
+C++17 CLI uses FFmpeg CPU filters. Supported scales: 1x, 2x, 4x, 8x. Image output: PNG. Video output: FFV1/FLAC MKV or H.264/AAC MP4. Existing outputs are never intentionally overwritten. The CLI is the underlying engine for the agent skill; the supported agent entry point is scripts/agent.py.
 
 | Preset | Operation |
 | --- | --- |
@@ -23,7 +23,7 @@ C++17 CLI uses FFmpeg CPU filters. Supported scales: 1x, 2x, 4x, 8x. Image outpu
 
 ## Build on Linux
 
-Dependencies: CMake >=3.20, C++17 compiler, FFmpeg and FFprobe (with libx264). Qt 6 Widgets development package is optional.
+Dependencies: CMake >=3.20, C++17 compiler, Python 3, FFmpeg and FFprobe (with libx264). No Qt or Python package downloads are required. Build with bash scripts/build.sh; it checks existing local dependencies and runs the tests.
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -35,8 +35,12 @@ ctest --test-dir build --output-on-failure
 ./build/dme input.mp4 output60.mkv 1 temporal 60
 ./build/dme input.mp4 stable.mkv 1 stabilize keep
 ./build/dme input.mp4 multi.mkv 2 multiframe keep
-./build/dme-gui # if Qt6 Widgets was found
+
 ```
+
+## Agent interface
+
+See SKILL.md and references/commands.md. Use python3 scripts/agent.py doctor, analyze, enhance or verify-repeat. The wrapper emits one JSON object, reports nonzero failure status, computes SHA-256 of source and output, and supports exact two-run hash comparison. No automatic software installation, network access or output overwrite. The wrapper defaults to 1x and original FPS; the native CLI retains its previous 2x default for compatibility.
 
 ## Adaptive analysis
 
@@ -64,7 +68,7 @@ CPU-only, restricted FFmpeg CPU flags, single-thread processing, bitexact flags,
 
 - User-defined ROI and scene-adaptive restoration, chroma/alpha and temporal quality validation.
 - Blind/motion deconvolution, BM3D and more advanced local motion and iterative multi-frame reconstruction.
-- Preview, batch jobs, progress, cancellation and advanced controls.
+- Agent-driven batch jobs, progress, cancellation and expanded validation.
 - Advanced scene-aware motion restoration, color management and higher bit-depth validation.
 - Reproducible toolchain and cross-platform builds; GPU only after determinism validation.
 - License selection before public distribution.

@@ -40,7 +40,7 @@ bool one_of(const std::string& ext, std::initializer_list<const char*> values) {
 int main(int argc, char** argv) {
     try {
         if (argc == 2 && std::string(argv[1]) == "--version") {
-            std::cout << "DME 0.6.0\n"; return 0;
+            std::cout << "DME 0.7.0\n"; return 0;
         }
         if (argc >= 3 && argc <= 4 && std::string(argv[1]) == "--analyze") {
             fs::path input=fs::absolute(argv[2]);
