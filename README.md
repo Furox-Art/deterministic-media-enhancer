@@ -103,11 +103,13 @@ build/skill/dme --synthetic-benchmark 1000
 
 Both distributions contain the same Rust source, agent interface, SKILL.md, tests and documentation. They do not bundle architecture-specific binaries, install runtime dependencies or execute install hooks. Linux/WSL only; existing Python 3.10+, Rust 1.85+ (Cargo/linker), FFmpeg/FFprobe with libx264/libx265, and Bash are required. npm additionally requires Node 18+.
 
-Registry installation commands (once the corresponding release is published):
+Published registry packages (release candidate):
 
 ```sh
 python3 -m pip install deterministic-media-enhancer==1.0.0rc5
 # OR: npm install -g deterministic-media-enhancer@1.0.0-rc.5
+
+[PyPI](https://pypi.org/project/deterministic-media-enhancer/1.0.0rc5/) · [npm](https://www.npmjs.com/package/deterministic-media-enhancer/v/1.0.0-rc.5)
 dme build
 dme doctor
 dme skill-path

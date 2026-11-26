@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: deterministic-media-enhancer
+Version: 1.0.0rc5
+Summary: Offline model-free image and video restoration skill
+License-Expression: MIT
+Project-URL: Repository, https://github.com/Furox-Art/deterministic-media-enhancer
+Classifier: Development Status :: 4 - Beta
+Classifier: Environment :: Console
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Programming Language :: Python :: 3
+Classifier: Topic :: Multimedia :: Graphics
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
