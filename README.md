@@ -1,5 +1,7 @@
 # Deterministic Media Enhancer (DME)
 
+[![CI](https://github.com/Furox-Art/deterministic-media-enhancer/actions/workflows/ci.yml/badge.svg)](https://github.com/Furox-Art/deterministic-media-enhancer/actions/workflows/ci.yml)
+
 An AI agent skill for local, offline image and video enhancement without trained models, cloud services, telemetry or usage fees. No desktop application or GUI. Start with [SKILL.md](SKILL.md).
 
 ## v1.0.0-rc5 — conservative denoising, BT.709 handling and package distributions

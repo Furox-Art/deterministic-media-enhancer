@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build, unit tests, and integration suite (Ubuntu)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install FFmpeg and FFprobe
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Print toolchain versions
+        run: |
+          rustc --version
+          cargo --version
+          python3 --version
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
+
+      - name: Build offline, run cargo test and scripts/test.py
+        run: bash scripts/build.sh
+
+      - name: Run synthetic kernel benchmark smoke check
+        run: build/skill/dme --synthetic-benchmark 50
