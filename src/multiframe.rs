@@ -547,6 +547,37 @@ impl GpuCubic {
         Ok(())
     }
 }
+fn sdr_tags(path: &str) -> Result<Option<(String, String)>> {
+    let mut c = probe(path)?;
+    c.args([
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=color_space,color_range,color_transfer,color_primaries",
+        "-of",
+        "default=noprint_wrappers=1",
+        path,
+    ]);
+    let raw = String::from_utf8(capture(&mut c, 4096)?)?;
+    let tags: std::collections::BTreeMap<_, _> =
+        raw.lines().filter_map(|l| l.split_once('=')).collect();
+    let get = |k| tags.get(k).copied().unwrap_or("unknown");
+    if ["smpte2084", "arib-std-b67"].contains(&get("color_transfer"))
+        || get("color_primaries") == "bt2020"
+    {
+        return err("Multiframe does not support HDR; use precision or hdr10");
+    }
+    if get("color_space") == "bt709" && get("color_range") == "tv" {
+        let trc = get("color_transfer");
+        let prim = get("color_primaries");
+        if ["bt709", "smpte170m", "unknown", "unspecified"].contains(&trc)
+            && ["bt709", "unknown", "unspecified"].contains(&prim)
+        {
+            return Ok(Some((trc.into(), prim.into())));
+        }
+    }
+    Ok(None)
+}
 pub fn encode_multi(path: &str, out: &str, t: &Timeline, mode: &str) -> Result<()> {
     if !video::cfr(t)
         || t.pts[0].abs() > 2000
@@ -558,6 +589,7 @@ pub fn encode_multi(path: &str, out: &str, t: &Timeline, mode: &str) -> Result<(
     {
         return err("Multiframe requires near-zero-start CFR, minimum 32x32 and maximum 2073600 source pixels");
     }
+    let tags = sdr_tags(path)?;
     let rate = video::native_rate(path, t)?;
     let mut enc = ff();
     enc.arg("-n").args([
@@ -576,12 +608,34 @@ pub fn encode_multi(path: &str, out: &str, t: &Timeline, mode: &str) -> Result<(
     ]);
     input(&mut enc, path)?;
     enc.args(["-map", "0:v:0", "-map", "1:a?"]);
+    if let Some((trc, prim)) = &tags {
+        enc.args([
+            "-vf",
+            "scale=out_color_matrix=bt709:in_range=pc:out_range=tv:flags=accurate_rnd+bitexact",
+            "-colorspace",
+            "bt709",
+            "-color_range",
+            "tv",
+        ]);
+        if trc != "unknown" && trc != "unspecified" {
+            enc.args(["-color_trc", trc]);
+        }
+        if prim != "unknown" && prim != "unspecified" {
+            enc.args(["-color_primaries", prim]);
+        }
+    }
     encoding(&mut enc, out, false);
     let mut writer = ChildGuard(enc.stdin(Stdio::piped()).spawn()?);
     let mut w = writer.0.stdin.take().ok_or("Missing encoder input")?;
     let mut dec = ff();
     dec.arg("-noautorotate");
     input(&mut dec, path)?;
+    if tags.is_some() {
+        dec.args([
+            "-vf",
+            "scale=in_color_matrix=bt709:in_range=tv:out_range=pc:flags=accurate_rnd+bitexact",
+        ]);
+    }
     dec.args([
         "-map",
         "0:v:0",

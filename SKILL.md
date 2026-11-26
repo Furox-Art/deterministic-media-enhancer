@@ -28,6 +28,10 @@ For high-bit-depth input requiring preservation, select `precision`; for support
 
 For slow or large media use the global `--timeout-seconds N` option before the command, within 1–86400 seconds. Default: 3600 seconds per subprocess. Do not silently retry indefinitely. Malformed, contradictory or non-finite structured reports fail the job. Report the actual error and keep verified outputs from earlier batch jobs. Use the trusted installed engine and FFmpeg executables only.
 
+## Installed package workflow
+
+If installed via PyPI or npm, use the `dme` launcher instead of scripts/agent.py: `dme build` explicitly builds/tests offline in the user's cache, `dme doctor` checks dependencies, and `dme skill-path` locates this document. Do not write build artifacts into the installed package directory. Use `bm3d-soft` for a less aggressive explicit denoising option when texture preservation matters. It is not universally beneficial.
+
 ## Commands
 
 Run from the skill directory, or use the absolute path to its scripts/agent.py.

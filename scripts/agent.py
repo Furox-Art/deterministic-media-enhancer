@@ -17,10 +17,10 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_ENGINE = ROOT / "build" / "skill" / "dme"
-EXPECTED_ENGINE = "DME 1.0.0-rc4"
+EXPECTED_ENGINE = "DME 1.0.0-rc5"
 FFMPEG_LOG = re.compile(r"^\[[^\]\r\n]+ @ 0x[0-9a-fA-F]+\]")
 PRESETS = ("auto", "clean", "detail", "resize", "precision", "hdr10", "restore", "denoise",
-           "regional", "deblur", "wavelet", "patch", "bm3d", "blind", "motion-deblur", "temporal", "stabilize", "multiframe", "multiframe-local", "multiframe-gpu")
+           "regional", "deblur", "wavelet", "patch", "bm3d", "bm3d-soft", "blind", "motion-deblur", "temporal", "stabilize", "multiframe", "multiframe-local", "multiframe-gpu")
 IMAGES = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
 VIDEOS = {".mp4", ".mkv", ".mov", ".avi", ".webm"}
 VIDEO_ONLY = {"hdr10", "temporal", "stabilize", "multiframe", "multiframe-local", "multiframe-gpu"}
@@ -174,9 +174,10 @@ def validate_reports(reports, image, scale, fps, preset):
                 or (fps == "keep" and guard["input_frames"] != guard["output_frames"])):
             raise JobError("Invalid video timeline report", reports)
     bm = [r for r in reports if "bm3d" in r]
-    if preset == "bm3d":
+    if preset in ("bm3d","bm3d-soft"):
         count = 1 if image else guard["input_frames"]
         if (len(bm) != 1 or bm[0].get("bm3d") != "integer_wht_two_stage"
+                or bm[0].get("strength_percent") != (50 if preset=="bm3d-soft" else 100)
                 or not positive_int(bm[0].get("frames")) or bm[0]["frames"] != count
                 or type(bm[0].get("processed_frames")) is not int
                 or not 0 <= bm[0]["processed_frames"] <= count

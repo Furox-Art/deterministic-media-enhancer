@@ -2,7 +2,7 @@
 
 An AI agent skill for local, offline image and video enhancement without trained models, cloud services, telemetry or usage fees. No desktop application or GUI. Start with [SKILL.md](SKILL.md).
 
-## v1.0.0-rc4 — directional PSF, static HDR10, complete local-fusion CUDA kernels and real-reference QA
+## v1.0.0-rc5 — conservative denoising, BT.709 handling and package distributions
 
 The Rust CLI uses FFmpeg CPU filters and has no third-party Rust crate dependencies. Supported scales: 1x, 2x, 4x, 8x. Image output: PNG. Video output: FFV1/FLAC MKV, H.264/AAC MP4, or explicit static HDR10 lossless HEVC/FLAC MKV. Existing outputs are never intentionally overwritten. The CLI is the underlying engine for the agent skill; the supported agent entry point is scripts/agent.py.
 
@@ -19,9 +19,29 @@ The Rust CLI uses FFmpeg CPU filters and has no third-party Rust crate dependenc
 | wavelet | Three-level wavelet denoising |
 | patch | Experimental single-patch transform denoising (FFmpeg BM3D basic, group=1) |
 | bm3d | Native two-stage block matching, integer collaborative transform and Wiener estimate |
+| bm3d-soft | Half-strength native BM3D blend for reduced texture loss |
 | temporal | Five-frame adaptive temporal denoising (video only) |
 | stabilize | Block-motion stabilization (video only) |
 | multiframe | Half-pixel global registration and conservative 2x sample fusion (video only) |
+
+## Install the agent skill from a package
+
+Both distributions contain the same Rust source, agent interface, SKILL.md, tests and documentation. They do not bundle architecture-specific binaries, install runtime dependencies or execute install hooks. Linux/WSL only; existing Python 3.10+, Rust 1.85+ (Cargo/linker), FFmpeg/FFprobe with libx264/libx265, and Bash are required. npm additionally requires Node 18+.
+
+Registry installation commands (once the corresponding release is published):
+
+```sh
+python3 -m pip install deterministic-media-enhancer==1.0.0rc5
+# OR: npm install -g deterministic-media-enhancer@1.0.0-rc.5
+dme build
+dme doctor
+dme skill-path
+dme enhance --input input.png --output restored.png --preset bm3d-soft
+```
+
+Use only one global dme launcher at a time, or isolate each package installation. `dme build` explicitly compiles and runs the tests offline, then installs the verified engine in a source-hash-specific user cache under XDG_CACHE_HOME (default ~/.cache). Optional `dme build --gpu` requires a locally available CUDA compiler/runtime. `dme skill-path` prints the directory containing SKILL.md. For local release artifacts use pip install with the wheel path or npm install with the tgz path. No registry connection is required for enhancement or engine build.
+
+Maintainers: `python3 scripts/package.py --output build/packages-rc5` creates a wheel, Python source archive and npm tarball using existing build/setuptools/wheel/npm; checksums are recorded. `python3 scripts/test_packages.py build/packages-rc5/dist` installs the artifacts into isolated temporary locations and tests them without registry access. See references/validation-rc5.md for measured quality and release verification.
 
 ## Build on Linux
 
@@ -55,7 +75,7 @@ The optional global argument `--timeout-seconds` (default 3600, range 1–86400)
 
 ## Release-candidate restoration and input validation
 
-The explicit `patch` preset retains FFmpeg's single-patch basic estimator. The `bm3d` preset now uses a native Rust two-stage BM3D-family variant: robust diagonal-residual noise estimation, deterministic 8x8 block matching (groups of 1/2/4), integer Walsh-Hadamard collaborative hard-thresholding, pilot-guided fixed-point Wiener shrinkage, and overlapping tapered aggregation. It is not a bit-for-bit port of the canonical reference DCT/BM3D implementation. No floating-point operations or learned models are used in the native filtering kernel. Sigma below 2 bypasses filtering; sigma is capped at 25. Both presets process 8-bit YUV luma and can remove real texture. Native BM3D leaves chroma samples unchanged before FFmpeg conversion/encoding. It requires at least 32x32, at most 2,073,600 source pixels, and for video near-zero-start constant-frame-rate input with at least three frames. It runs frame by frame; no temporal denoising guarantee. Neither preset is in auto. The tested FFmpeg 6.1.1 two-pass filter produced substantial errors even with zero sigma, so the native implementation avoids that path. Controlled quality results are not universal; visually inspect outputs and retain originals. The native engine restricts every external FFmpeg/FFprobe media input to the demuxer family matching its file extension. This rejects disguised concat/HLS playlists and mismatched containers; it is not a sandbox or a guarantee against all decoder vulnerabilities or indirect local reads. FFmpeg diagnostic lines are separated from strict JSON reports.
+The explicit `patch` preset retains FFmpeg's single-patch basic estimator. The `bm3d` preset now uses a native Rust two-stage BM3D-family variant: robust diagonal-residual noise estimation, deterministic 8x8 block matching (groups of 1/2/4), integer Walsh-Hadamard collaborative hard-thresholding, pilot-guided fixed-point Wiener shrinkage, and overlapping tapered aggregation. It is not a bit-for-bit port of the canonical reference DCT/BM3D implementation. No floating-point operations or learned models are used in the native filtering kernel. Sigma below 2 bypasses filtering; sigma is capped at 25. Both presets process 8-bit YUV luma and can remove real texture. Native BM3D leaves chroma samples unchanged before FFmpeg conversion/encoding. It requires at least 32x32, at most 2,073,600 source pixels, and for video near-zero-start constant-frame-rate input with at least three frames. It runs frame by frame; no temporal denoising guarantee. Neither preset is in auto. The explicit bm3d-soft mode blends the native output and input 1:1 with deterministic integer rounding, limiting changes without guaranteeing improvement. On the existing 2,102 development-reference patches, it reduced adverse cases from 197 to 3 versus full strength; some aggregate denoising performance is traded for texture preservation. See validation-rc5.md. The tested FFmpeg 6.1.1 two-pass filter produced substantial errors even with zero sigma, so the native implementation avoids that path. Controlled quality results are not universal; visually inspect outputs and retain originals. The native engine restricts every external FFmpeg/FFprobe media input to the demuxer family matching its file extension. This rejects disguised concat/HLS playlists and mismatched containers; it is not a sandbox or a guarantee against all decoder vulnerabilities or indirect local reads. FFmpeg diagnostic lines are separated from strict JSON reports.
 
 Run `python3 tests/quality.py build/skill/dme` for a deterministic synthetic grayscale noise fixture; optionally supply `--reference /path/to/authorized.jpg --artifacts /path/to/new-qa-directory`. The comparison reports MSE, PSNR and mean nonoverlapping 8x8 SSIM against the same clean reference, with clean-input controls for the new filters. Wall-clock timings are observational. It does not measure general perceptual quality, temporal quality or color fidelity. Doctor checks available filters, encoders, muxers, demuxers and the expected engine version.
 
@@ -75,7 +95,7 @@ The optional fifth positional argument after input/output/scale/preset selects `
 
 The experimental `multiframe` preset is implemented in Rust using integer arithmetic for registration, interpolation and blending. A three-frame sliding window aligns neighboring frames using global translations searched on an integer and half-pixel grid, with bidirectional checks. Only shifts providing a new sampling phase and sufficiently low matching error are eligible. The 2x output starts from a fixed-point cubic interpolation; compatible neighboring samples contribute to missing pixel phases with a 2:1 weight per observation relative to the baseline. A per-channel residual threshold rejects incompatible samples. Original center-frame RGB samples at even/even coordinates remain untouched before output encoding. If no neighbor qualifies, cubic interpolation is used. This is not a general optical-flow or iterative super-resolution solver and cannot guarantee better quality than Lanczos or recover all lost detail.
 
-Currently limited to near-zero-start CFR videos, 2x spatial scale, original FPS, at least three frames, 32x32 minimum and 2073600 source pixels maximum. Input is decoded to 8-bit RGB without automatic rotation; output uses the existing video encoders and timeline guard. HDR, alpha, rotation metadata, nonrigid motion and large camera motion are not supported by the fusion model. The input is streamed through pipes and memory is bounded by the three source frames and one upscaled output frame. JSON reports accepted neighbors and fused pixels. The test suite uses Python 3 to generate synthetic fixtures.
+Currently limited to near-zero-start CFR videos, 2x spatial scale, original FPS, at least three frames, 32x32 minimum and 2073600 source pixels maximum. Input is decoded to 8-bit RGB without automatic rotation; supported limited-range BT.709 SDR inputs use explicit BT.709 matrix conversion and output color tags; PQ/HLG or BT.2020 inputs are rejected. Other color spaces are not fully validated; output uses the existing video encoders and timeline guard. HDR, alpha, rotation metadata, nonrigid motion and large camera motion are not supported by the fusion model. The input is streamed through pipes and memory is bounded by the three source frames and one upscaled output frame. JSON reports accepted neighbors and fused pixels. The test suite uses Python 3 to generate synthetic fixtures.
 
 ## Determinism
 
@@ -93,7 +113,7 @@ python3 scripts/repro.py record --fixtures build/repro-fixtures --output build/h
 python3 scripts/repro.py compare build/host-a.json build/host-b.json
 ```
 
-The recorder checks the fixed 4096-byte integer-kernel golden SHA-256, renders each of 24 CPU cases twice, validates reports, and compares encoded bytes, decoded high-bit-depth raster/PCM and canonical report hashes. It fingerprints source, fixture files, engine and FFmpeg/FFprobe executables and their ldd-resolved libraries where available. The comparator rejects malformed or incomplete manifests and mismatched source/fixture identities. CPU architecture/model and affinity are observational metadata, not independently authenticated hardware evidence. Different toolchain hashes prevent attribution solely to hardware; matching outputs establish repeatability only for the tested cases. libx264 assembly is disabled as an additional CPU-dispatch restriction. External codecs and libraries may still differ across platforms. Independent physical-machine testing is not implied by same-machine affinity tests.
+The recorder checks the fixed 4096-byte integer-kernel golden SHA-256, renders each of 26 CPU cases twice, validates reports, and compares encoded bytes, decoded high-bit-depth raster/PCM and canonical report hashes. It fingerprints source, fixture files, engine and FFmpeg/FFprobe executables and their ldd-resolved libraries where available. The comparator rejects malformed or incomplete manifests and mismatched source/fixture identities. CPU architecture/model and affinity are observational metadata, not independently authenticated hardware evidence. Different toolchain hashes prevent attribution solely to hardware; matching outputs establish repeatability only for the tested cases. libx264 assembly is disabled as an additional CPU-dispatch restriction. External codecs and libraries may still differ across platforms. Independent physical-machine testing is not implied by same-machine affinity tests.
 
 ## Advanced explicit presets
 

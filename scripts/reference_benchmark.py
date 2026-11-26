@@ -64,6 +64,8 @@ def main():
                 "size":a.size,"pillow":pillow_version,"archives":archives,"engine_sha256":hashfile(a.engine),
                 "references":len(refs),"noise":summary("noise"),"clean_mean_mse":sum(r["clean_sse"] for r in refs)/(len(refs)*a.size*a.size),
                 "decode_failures":errors,"cases":refs}
+        x=[r["noise_baseline_sse"] for r in refs];y=[r["soft_candidate_sse"] for r in refs]
+        result["soft"]={"before":sum(x),"after":sum(y),"improved":sum(b<a for a,b in zip(x,y)),"equal":sum(a==b for a,b in zip(x,y)),"worse":sum(b>a for a,b in zip(x,y)),"clean_mean_mse":sum(r["soft_clean_sse"] for r in refs)/(len(refs)*a.size*a.size)}
         if a.motion:
             result["motion"]=summary("motion")
             result["motion"].update(selected=sum(r["motion_selected_id"]!=0 for r in refs),clean_selected=sum(r["motion_clean_id"]!=0 for r in refs))

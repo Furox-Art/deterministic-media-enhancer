@@ -31,7 +31,9 @@ CASES = [
      ("image-motion-deblur","image.bmp","png",1,"motion-deblur","keep"),
      ("video-local","video.mkv","mkv",2,"multiframe-local","keep"),
      ("hdr10-1x","hdr.mkv","mkv",1,"hdr10","keep"),
-     ("hdr10-2x","hdr.mkv","mkv",2,"hdr10","keep")]
+     ("hdr10-2x","hdr.mkv","mkv",2,"hdr10","keep"),
+     ("image-bm3d-soft","image.bmp","png",1,"bm3d-soft","keep"),
+     ("video-bm3d-soft","video.mkv","mkv",1,"bm3d-soft","keep")]
 ENV = dict(os.environ, LC_ALL="C", LANG="C", TZ="UTC")
 HEX = re.compile(r"[a-f0-9]{64}\Z")
 

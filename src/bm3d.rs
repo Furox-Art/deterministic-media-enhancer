@@ -216,6 +216,13 @@ pub fn restore(src: &[u8], w: usize, h: usize) -> Result<(Vec<u8>, i64)> {
     Ok((pass(src, &basic, w, h, sigma, true), sigma))
 }
 
+pub fn soften(src: &[u8], filtered: &[u8]) -> Vec<u8> {
+    src.iter()
+        .zip(filtered)
+        .map(|(&a, &b)| ((a as u16 + b as u16 + 1) / 2) as u8)
+        .collect()
+}
+
 pub fn encode_native(
     path: &str,
     out: &str,
@@ -307,8 +314,16 @@ pub fn encode_native(
             Err(e) => return Err(e.into()),
         }
         src.read_exact(&mut buffer[1..])?;
-        let (restored, sigma) = if preset == "bm3d" {
-            restore(&buffer[..n], w, h)?
+        let (restored, sigma) = if matches!(preset, "bm3d" | "bm3d-soft") {
+            let (p, s) = restore(&buffer[..n], w, h)?;
+            (
+                if preset == "bm3d-soft" {
+                    soften(&buffer[..n], &p)
+                } else {
+                    p
+                },
+                s,
+            )
         } else {
             if preset == "blind" {
                 crate::blind::blind(&buffer[..n], w, h)?
@@ -320,7 +335,13 @@ pub fn encode_native(
         dst.write_all(&buffer)?;
         frames += 1;
         sigma_sum += sigma;
-        if sigma >= if preset == "bm3d" { 2 } else { 1 } {
+        if sigma
+            >= if matches!(preset, "bm3d" | "bm3d-soft") {
+                2
+            } else {
+                1
+            }
+        {
             processed += 1
         }
     }
@@ -332,9 +353,10 @@ pub fn encode_native(
     {
         return err("Native BM3D encode failed or frame count differs");
     }
-    if preset == "bm3d" {
+    if matches!(preset, "bm3d" | "bm3d-soft") {
+        let strength = if preset == "bm3d-soft" { 50 } else { 100 };
         eprintln!(
-            r#"{{"bm3d":"integer_wht_two_stage","frames":{frames},"processed_frames":{processed},"sigma_sum":{sigma_sum}}}"#
+            r#"{{"bm3d":"integer_wht_two_stage","frames":{frames},"processed_frames":{processed},"sigma_sum":{sigma_sum},"strength_percent":{strength}}}"#
         );
     } else {
         eprintln!(

@@ -45,7 +45,7 @@ Global option: `--timeout-seconds 3600` before the subcommand (1–86400). Each 
 
 ## Cross-hardware comparison
 
-Use `python3 scripts/repro.py prepare --fixtures NEW_DIRECTORY` once. Copy the three fixture files unchanged and build identical source on each authorized machine. On each, run `python3 scripts/repro.py record --fixtures DIRECTORY --output NEW_MANIFEST.json`, then compare the two reports with `python3 scripts/repro.py compare A.json B.json`. Only generated fixture media are processed. The 24 CPU cases each run twice. The integer kernel also has a fixed SHA-256 reference. The comparator distinguishes source/fixture incompatibility, file/decoded/report differences and recorded toolchain/environment differences. Same-machine tests do not prove cross-hardware determinism; independently confirm the physical devices and keep claims limited to the tested cases.
+Use `python3 scripts/repro.py prepare --fixtures NEW_DIRECTORY` once. Copy the three fixture files unchanged and build identical source on each authorized machine. On each, run `python3 scripts/repro.py record --fixtures DIRECTORY --output NEW_MANIFEST.json`, then compare the two reports with `python3 scripts/repro.py compare A.json B.json`. Only generated fixture media are processed. The 26 CPU cases each run twice. The integer kernel also has a fixed SHA-256 reference. The comparator distinguishes source/fixture incompatibility, file/decoded/report differences and recorded toolchain/environment differences. Same-machine tests do not prove cross-hardware determinism; independently confirm the physical devices and keep claims limited to the tested cases.
 
 ## Batch manifest
 
@@ -62,3 +62,7 @@ Run `python3 scripts/corpus.py --manifest pairs.json --output NEW_REPORT.json` o
 ## Real-reference ZIP kernel sweep
 
 Use `python3 scripts/reference_benchmark.py --engine build/skill/dme --archive AUTHORIZED.zip --size 128 --motion --output NEW.json`. Optional Pillow is only used for QA preprocessing, not by the skill. `--per-class 200` selects at most 200 deterministic hash-ranked files per parent directory; duplicate grayscale references are excluded. The runner measures controlled added integer noise, clean controls and optionally known five-tap motion blur against the same reference. It records archive/source/reference/engine hashes and per-case errors. Small grayscale patches are not full-resolution codec, color or perceptual evaluations. Source scenes may overlap.
+
+## Installed packages
+
+Use `dme build` once (or `dme build --gpu` if CUDA is already available), then `dme doctor`. The installed `dme` command forwards the same JSON options as scripts/agent.py. `dme skill-path` locates SKILL.md. The `bm3d-soft` preset uses a deterministic 50% blend of the native filtered luma with the decoded source luma. It is explicit, not auto.

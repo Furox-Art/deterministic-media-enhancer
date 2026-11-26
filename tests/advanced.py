@@ -75,6 +75,24 @@ with tempfile.TemporaryDirectory(prefix="dme-advanced-") as tmp:
             assert g["sha256"]==a["sha256"]
             assert next(x for x in g["reports"] if "local_fusion" in x)["phases"]==phase
         print("CUDA and CPU video SHA256 equal:",a["sha256"],"phases",phase)
+    # Tagged SDR conversion and CUDA parity; reject unsupported HDR in RGB fusion.
+    tagged=r/"tagged.mkv"
+    ff("-i",source,"-vf","scale=out_color_matrix=bt709:flags=accurate_rnd+bitexact",
+       "-pix_fmt","yuv444p","-colorspace","bt709","-color_range","tv","-color_trc","bt709",
+       "-color_primaries","bt709","-c:v","ffv1","-c:a","flac","-threads","1",tagged)
+    t=invoke(tagged,r/"tagged-local.mkv","multiframe-local",2)
+    tags=json.loads(call("ffprobe","-v","error","-select_streams","v:0","-show_entries",
+      "stream=color_space,color_range,color_transfer,color_primaries","-of","json",r/"tagged-local.mkv").stdout)["streams"][0]
+    assert tags=={"color_space":"bt709","color_range":"tv","color_transfer":"bt709","color_primaries":"bt709"},tags
+    if gpu:
+        g=invoke(tagged,r/"tagged-gpu.mkv","multiframe-gpu",2)
+        assert g["sha256"]==t["sha256"]
+    invoke(hdr,r/"hdr-fusion.mkv","multiframe-local",2,ok=False)
+    assert not (r/"hdr-fusion.mkv").exists()
+    for mode in ("bm3d","bm3d-soft"):
+        a=invoke(source,r/(mode+".mkv"),mode)
+        report=next(x for x in a["reports"] if "bm3d" in x)
+        assert report["strength_percent"]==(50 if mode=="bm3d-soft" else 100)
     # Both deconvolution modes must emit validated reports and deterministic outputs.
     for preset in ("blind","motion-deblur"):
         a=invoke(source,r/f"{preset}-a.mkv",preset)

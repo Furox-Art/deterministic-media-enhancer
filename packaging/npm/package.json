@@ -1,0 +1,36 @@
+{
+  "name": "deterministic-media-enhancer",
+  "version": "1.0.0-rc.5",
+  "description": "Offline model-free image and video restoration skill",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Furox-Art/deterministic-media-enhancer.git"
+  },
+  "homepage": "https://github.com/Furox-Art/deterministic-media-enhancer",
+  "bugs": {
+    "url": "https://github.com/Furox-Art/deterministic-media-enhancer/issues"
+  },
+  "bin": {
+    "dme": "bin/dme.cjs"
+  },
+  "files": [
+    "bin/dme.cjs",
+    "dme_package/launcher.py",
+    "dme_package/skill"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "linux"
+  ],
+  "keywords": [
+    "ai-skill",
+    "offline",
+    "deterministic",
+    "rust",
+    "ffmpeg",
+    "restoration"
+  ]
+}

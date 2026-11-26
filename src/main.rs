@@ -30,6 +30,7 @@ const PRESETS: &[&str] = &[
     "wavelet",
     "patch",
     "bm3d",
+    "bm3d-soft",
     "blind",
     "motion-deblur",
     "temporal",
@@ -96,7 +97,7 @@ fn main_job() -> Result<()> {
         return Ok(());
     }
     if !(2..=5).contains(&args.len()) {
-        return err("Usage: dme INPUT OUTPUT [1|2|4|8] [auto|clean|detail|resize|precision|hdr10|restore|denoise|regional|deblur|wavelet|patch|bm3d|blind|motion-deblur|temporal|stabilize|multiframe|multiframe-local|multiframe-gpu] [keep|30|60|120]");
+        return err("Usage: dme INPUT OUTPUT [1|2|4|8] [auto|clean|detail|resize|precision|hdr10|restore|denoise|regional|deblur|wavelet|patch|bm3d|bm3d-soft|blind|motion-deblur|temporal|stabilize|multiframe|multiframe-local|multiframe-gpu] [keep|30|60|120]");
     }
     let input = absolute(&args[0])?;
     let output = absolute(&args[1])?;
@@ -157,7 +158,7 @@ fn main_job() -> Result<()> {
         let t = timeline.as_ref().unwrap();
         (t.width, t.height)
     };
-    if matches!(preset, "patch" | "bm3d") && iw.min(ih) < 32 {
+    if matches!(preset, "patch" | "bm3d" | "bm3d-soft") && iw.min(ih) < 32 {
         return err("Patch/BM3D presets require at least 32x32 pixels");
     }
     let baseline = resize(s);
@@ -168,7 +169,9 @@ fn main_job() -> Result<()> {
             eprintln!("{r}");
             f
         }
-        "bm3d" | "blind" | "motion-deblur" | "precision" | "hdr10" => baseline.clone(),
+        "bm3d" | "bm3d-soft" | "blind" | "motion-deblur" | "precision" | "hdr10" => {
+            baseline.clone()
+        }
         "temporal" | "stabilize" | "regional" | "deblur" | "wavelet" | "patch" => {
             let f = match preset {
                 "temporal" => TEMPORAL,
@@ -206,7 +209,7 @@ fn main_job() -> Result<()> {
         precision::encode_precision(&input, &candidate, image, s)?;
     } else if preset.starts_with("multiframe") {
         multiframe::encode_multi(&input, &candidate, timeline.as_ref().unwrap(), preset)?
-    } else if matches!(preset, "bm3d" | "blind" | "motion-deblur") {
+    } else if matches!(preset, "bm3d" | "bm3d-soft" | "blind" | "motion-deblur") {
         bm3d::encode_native(
             &input,
             &candidate,

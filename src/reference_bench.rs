@@ -30,10 +30,12 @@ pub fn run(path: &str, size: usize, count: usize, motion: bool) -> Result<()> {
         let (out, sigma) = bm3d::restore(&b, size, size)?;
         let (clean, _) = bm3d::restore(&a, size, size)?;
         print!(
-            r#"{{"index":{i},"noise_baseline_sse":{},"noise_candidate_sse":{},"clean_sse":{},"sigma":{sigma}"#,
+            r#"{{"index":{i},"noise_baseline_sse":{},"noise_candidate_sse":{},"clean_sse":{},"soft_candidate_sse":{},"soft_clean_sse":{},"sigma":{sigma}"#,
             sse(&a, &b),
             sse(&a, &out),
-            sse(&a, &clean)
+            sse(&a, &clean),
+            sse(&a, &bm3d::soften(&b, &out)),
+            sse(&a, &bm3d::soften(&a, &clean))
         );
         if motion {
             let (dx, dy) = match i % 4 {
