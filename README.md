@@ -24,6 +24,79 @@ The Rust CLI uses FFmpeg CPU filters and has no third-party Rust crate dependenc
 | stabilize | Block-motion stabilization (video only) |
 | multiframe | Half-pixel global registration and conservative 2x sample fusion (video only) |
 
+## Visual examples
+
+All comparison panels below were generated offline on CPU by `dme` (`v1.0.0-rc5`) using public-domain (`scipy.datasets.ascent`) or CC0 (`shotstack/test-media`) sources and synthetic degradation fixtures. Yellow boxes show zoomed pixel-exact crops.
+
+### 1. Native integer BM3D denoising (Public-domain *Ascent*, 256×256, Gaussian σ = 12)
+
+![Native BM3D denoising comparison on public-domain Ascent](assets/comparisons/denoising-ascent.png)
+
+- `clean` (`hqdn3d`) over-smooths edges and drops PSNR (`26.61 -> 24.02 dB`).
+- `bm3d-soft` (50% blend) removes noise while preserving fine texture (`29.40 dB`, SSIM `0.8193`).
+- `bm3d` (two-stage integer Walsh-Hadamard + Wiener) improves PSNR by **+3.64 dB** (`30.25 dB`, SSIM `0.9099`) without hallucinated detail.
+
+### 2. 2× multi-frame sub-pixel fusion (CC0 Coastline, 256×256 → 512×512)
+
+![2x multiframe super-resolution comparison on CC0 coastline](assets/comparisons/multiframe-superres.png)
+
+- On a 5-frame point-sampled burst with sub-pixel offsets, `multiframe` (`30.94 dB`) and `multiframe-local` (`31.26 dB`, SSIM `0.9545`) recover crisp rock edges over single-frame Lanczos (`26.80 dB`, **+4.46 dB**).
+- **Scope note:** On area-downsampled real video excerpts without point-sampled phase shifts, `multiframe-local` remained worse than Lanczos across all six test clips (see [references/validation-rc4.md](references/validation-rc4.md) and [references/validation-rc5.md](references/validation-rc5.md)), so it stays opt-in.
+
+### 3. Blind step-edge motion deconvolution (256×256, 7-tap horizontal PSF)
+
+![Blind motion deconvolution comparison](assets/comparisons/deblur-blind.png)
+
+- `deblur` (fixed binomial inverse) assumes a mismatched blur kernel and introduces edge ringing (`18.83 dB`).
+- `blind` automatically identifies the 7-tap axial PSF and applies 8 bounded projected Landweber iterations (`19.17 -> 20.60 dB`, SSIM `0.7263`) while abstaining on ambiguous inputs.
+
+## Benchmark & PSNR / SSIM results
+
+### Single-image denoising comparison (`dme v1.0.0-rc5`, 256×256 8-bit luma)
+
+Measured using the `tests/quality.py` MSE / PSNR / mean non-overlapping 8×8 SSIM harness. **Clean control** runs each denoiser on the clean reference image itself to measure unintended detail loss on noise-free inputs.
+
+| Preset | Ascent (σ = 12)<br>PSNR / SSIM | Ascent (σ = 8)<br>PSNR / SSIM | Synthetic (σ = 8)<br>PSNR / SSIM | Clean control<br>MSE (Ascent / Synth) |
+| --- | ---: | ---: | ---: | ---: |
+| Noisy input / `resize` | 26.61 dB / 0.7032 | 30.10 dB / 0.8091 | 30.06 dB / 0.6652 | — |
+| `clean` (`hqdn3d`) | 24.02 dB / 0.6334 | 27.01 dB / 0.7432 | 27.72 dB / 0.5428 | — |
+| `denoise` (`nlmeans`) | 26.61 dB / 0.7032 | 30.20 dB / 0.8152 | 30.18 dB / 0.6719 | — |
+| `wavelet` | 26.73 dB / 0.7078 | 30.34 dB / 0.8172 | 30.43 dB / 0.6836 | 0.87 / 0.44 |
+| `patch` (FFmpeg BM3D basic) | 29.35 dB / 0.8176 | **33.54 dB** / 0.9443 | 38.63 dB / 0.9351 | 16.45 / 3.12 |
+| `bm3d-soft` (50% native) | 29.40 dB / 0.8193 | 32.47 dB / 0.8984 | 34.38 dB / 0.8384 | **0.29 / 0.29** |
+| `bm3d` (100% native WHT) | **30.25 dB / 0.9099** | 32.84 dB / **0.9450** | **38.76 dB / 0.9379** | **0.29 / 0.29** |
+
+Notice the clean-control difference: FFmpeg's `patch` alters clean images noticeably (MSE `16.45` on *Ascent*, PSNR `35.97 dB`), whereas native `bm3d` and `bm3d-soft` stay near-lossless when no noise is present (MSE `0.29`, PSNR `53.47 dB`, SSIM `0.9987`).
+
+### Reference corpus & synthetic kernel sweeps (`v1.0.0-rc5`)
+
+| Benchmark | Cases | Baseline MSE / agg. PSNR | `bm3d` MSE / agg. PSNR | `bm3d-soft` MSE / agg. PSNR | Improved (`bm3d` / `bm3d-soft`) | Clean control MSE (`bm3d` / `bm3d-soft`) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| CLIC validation (128×128, ±14 noise) | 102 | 68.59 / 29.77 dB | 48.62 / 31.26 dB | **41.98 / 31.90 dB** | 90/102 / **101/102** | 3.76 / **0.99** |
+| EuroSAT grayscale (64×64, ±14 noise) | 2,000 | 69.83 / 29.69 dB | **32.76 / 32.98 dB** | 33.94 / 32.82 dB | 1,815/2,000 / **1,998/2,000** | 3.17 / **0.84** |
+
+- **Synthetic kernel sweep (`dme --synthetic-benchmark 1000`):** 1,000 32×32 luma denoising variants reduced aggregate SSE from `63,086,713` to `14,248,507` (`994` improved, `6` unchanged, `0` worse); 1,000 four-frame local fusion sequences reduced center-frame SSE from `1,947,811` to `668,187` (`958` improved, `0` unchanged, `42` worse).
+
+### Deconvolution & 2× multi-frame fusion (`dme v1.0.0-rc5`)
+
+| Task | Preset | MSE | PSNR | SSIM (8×8) | Notes |
+| --- | --- | ---: | ---: | ---: | --- |
+| 7-tap horizontal blur (256×256) | Blurred input | 787.03 | 19.17 dB | 0.7026 | Step-edge test chart |
+| 7-tap horizontal blur (256×256) | `deblur` | 850.55 | 18.83 dB | 0.6400 | Mismatched binomial inverse |
+| 7-tap horizontal blur (256×256) | `motion-deblur` | 742.24 | 19.43 dB | 0.7065 | Searches 3/5-tap motion PSFs only |
+| 7-tap horizontal blur (256×256) | `blind` | **565.82** | **20.60 dB** | **0.7263** | Identifies 7-tap axial PSF (ID 3) |
+| 2× burst SR (CC0, 256→512, luma) | `resize` (Lanczos) | 135.73 | 26.80 dB | 0.8809 | Single-frame center upscaling |
+| 2× burst SR (CC0, 256→512, luma) | `multiframe` | 52.35 | 30.94 dB | 0.9456 | Global half-pixel registration |
+| 2× burst SR (CC0, 256→512, luma) | `multiframe-local` | **48.66** | **31.26 dB** | **0.9545** | 16×16 local + 5×5 patch guard |
+
+To reproduce locally:
+
+```sh
+python3 tests/quality.py build/skill/dme
+python3 tests/quality.py build/skill/dme --reference /path/to/authorized.png
+build/skill/dme --synthetic-benchmark 1000
+```
+
 ## Install the agent skill from a package
 
 Both distributions contain the same Rust source, agent interface, SKILL.md, tests and documentation. They do not bundle architecture-specific binaries, install runtime dependencies or execute install hooks. Linux/WSL only; existing Python 3.10+, Rust 1.85+ (Cargo/linker), FFmpeg/FFprobe with libx264/libx265, and Bash are required. npm additionally requires Node 18+.
