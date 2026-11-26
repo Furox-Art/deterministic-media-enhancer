@@ -3,9 +3,12 @@ mod benchmark;
 mod blind;
 mod bm3d;
 mod deconv;
+mod direction;
+mod hdr;
 mod media;
 mod multiframe;
 mod precision;
+mod reference_bench;
 mod video;
 use media::*;
 use std::{
@@ -19,6 +22,7 @@ const PRESETS: &[&str] = &[
     "detail",
     "resize",
     "precision",
+    "hdr10",
     "restore",
     "denoise",
     "regional",
@@ -63,6 +67,14 @@ fn main_job() -> Result<()> {
         println!("{VERSION}");
         return Ok(());
     }
+    if args.len() == 5 && args[0] == "--reference-benchmark" {
+        let motion = match args[4].as_str() {
+            "motion" => true,
+            "noise" => false,
+            _ => return err("Invalid reference benchmark mode"),
+        };
+        return reference_bench::run(&args[1], args[2].parse()?, args[3].parse()?, motion);
+    }
     if args.len() == 2 && args[0] == "--synthetic-benchmark" {
         let count: usize = args[1].parse()?;
         if !(1..=10000).contains(&count) {
@@ -84,7 +96,7 @@ fn main_job() -> Result<()> {
         return Ok(());
     }
     if !(2..=5).contains(&args.len()) {
-        return err("Usage: dme INPUT OUTPUT [1|2|4|8] [auto|clean|detail|resize|precision|restore|denoise|regional|deblur|wavelet|patch|bm3d|blind|motion-deblur|temporal|stabilize|multiframe|multiframe-local|multiframe-gpu] [keep|30|60|120]");
+        return err("Usage: dme INPUT OUTPUT [1|2|4|8] [auto|clean|detail|resize|precision|hdr10|restore|denoise|regional|deblur|wavelet|patch|bm3d|blind|motion-deblur|temporal|stabilize|multiframe|multiframe-local|multiframe-gpu] [keep|30|60|120]");
     }
     let input = absolute(&args[0])?;
     let output = absolute(&args[1])?;
@@ -120,6 +132,9 @@ fn main_job() -> Result<()> {
     if preset.starts_with("multiframe") && (s != 2 || fps != 0) {
         return err("Multiframe requires 2x scale and keep FPS");
     }
+    if preset == "hdr10" && (image || fps != 0) {
+        return err("HDR10 is video-only and requires original FPS");
+    }
     if preset == "precision" && fps != 0 {
         return err("Precision mode requires original FPS");
     }
@@ -153,7 +168,7 @@ fn main_job() -> Result<()> {
             eprintln!("{r}");
             f
         }
-        "bm3d" | "blind" | "motion-deblur" | "precision" => baseline.clone(),
+        "bm3d" | "blind" | "motion-deblur" | "precision" | "hdr10" => baseline.clone(),
         "temporal" | "stabilize" | "regional" | "deblur" | "wavelet" | "patch" => {
             let f = match preset {
                 "temporal" => TEMPORAL,
@@ -185,7 +200,9 @@ fn main_job() -> Result<()> {
     }
     let stage = Stage::new(Path::new(&output))?;
     let mut candidate = stage.file(&format!("candidate.{out_ext}"))?;
-    if preset == "precision" {
+    if preset == "hdr10" {
+        hdr::encode(&input, &candidate, s)?;
+    } else if preset == "precision" {
         precision::encode_precision(&input, &candidate, image, s)?;
     } else if preset.starts_with("multiframe") {
         multiframe::encode_multi(&input, &candidate, timeline.as_ref().unwrap(), preset)?

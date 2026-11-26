@@ -16,7 +16,7 @@ from agent import strict_json, JobError, validate_reports, split_reports
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT = ROOT / "build/skill/dme"
-SCHEMA = "dme-repro-v1"
+SCHEMA = "dme-repro-v2"
 GOLDEN = "a7bf1450aade6ec752e2faee5d43c0ceee667fea0f4940327024884739141808"
 W, H = 96, 80
 CASES = [
@@ -29,7 +29,9 @@ CASES = [
      ("video-bm3d-fps30","video.mkv","mkv",1,"bm3d","30"),
      ("image-blind","image.bmp","png",1,"blind","keep"),
      ("image-motion-deblur","image.bmp","png",1,"motion-deblur","keep"),
-     ("video-local","video.mkv","mkv",2,"multiframe-local","keep")]
+     ("video-local","video.mkv","mkv",2,"multiframe-local","keep"),
+     ("hdr10-1x","hdr.mkv","mkv",1,"hdr10","keep"),
+     ("hdr10-2x","hdr.mkv","mkv",2,"hdr10","keep")]
 ENV = dict(os.environ, LC_ALL="C", LANG="C", TZ="UTC")
 HEX = re.compile(r"[a-f0-9]{64}\Z")
 
@@ -87,7 +89,13 @@ def prepare(folder):
            "-map","0:v:0","-map","1:a:0","-map_metadata","-1","-threads","1","-c:v","ffv1",
            "-pix_fmt","bgr0","-c:a","flac","-flags:v","+bitexact","-flags:a","+bitexact",
            "-fflags","+bitexact",folder/"video.mkv")
-    return {name:filehash(folder/name) for name in ("image.bmp","video.mkv")}
+        ff("-n","-f","rawvideo","-pixel_format","rgb24","-video_size",f"{W}x{H}",
+           "-framerate","24","-i",raw,"-f","s16le","-ar","48000","-ac","1","-i",pcm,
+           "-map","0:v:0","-map","1:a:0","-map_metadata","-1","-threads","1","-c:v","libx265",
+           "-pix_fmt","yuv444p10le","-color_range","tv","-colorspace","bt2020nc","-color_trc","smpte2084","-color_primaries","bt2020",
+           "-x265-params","lossless=1:pools=none:frame-threads=1:log-level=error:asm=0:hdr10=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,1):max-cll=1000,400",
+           "-c:a","flac","-flags:a","+bitexact","-fflags","+bitexact",folder/"hdr.mkv")
+    return {name:filehash(folder/name) for name in ("image.bmp","video.mkv","hdr.mkv")}
 
 def cpu():
     result="unknown"
@@ -129,7 +137,7 @@ def decoded(path,image):
 
 def record(engine,folder):
     engine=engine.resolve();folder=folder.resolve()
-    fixtures={name:filehash(folder/name) for name in ("image.bmp","video.mkv")}
+    fixtures={name:filehash(folder/name) for name in ("image.bmp","video.mkv","hdr.mkv")}
     identity=source_identity()
     engine_id={"sha256":filehash(engine),"version":command(engine,"--version").stdout.decode().strip()}
     tools={name:tool(name) for name in ("ffmpeg","ffprobe")}
@@ -179,7 +187,7 @@ def validate(m):
         if not isinstance(libs,dict) or not all(digest(v) for v in libs.values()):
             raise ValueError("Invalid linked library identities")
     f=m.get("fixtures")
-    if not isinstance(f,dict) or set(f)!={"image.bmp","video.mkv"} or not all(map(digest,f.values())):
+    if not isinstance(f,dict) or set(f)!={"image.bmp","video.mkv","hdr.mkv"} or not all(map(digest,f.values())):
         raise ValueError("Invalid fixture identities")
     c=m.get("cases")
     if not isinstance(c,dict) or set(c)!={x[0] for x in CASES}:raise ValueError("Incomplete case set")

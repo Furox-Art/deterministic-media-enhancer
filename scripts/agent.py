@@ -17,13 +17,13 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_ENGINE = ROOT / "build" / "skill" / "dme"
-EXPECTED_ENGINE = "DME 1.0.0-rc3"
+EXPECTED_ENGINE = "DME 1.0.0-rc4"
 FFMPEG_LOG = re.compile(r"^\[[^\]\r\n]+ @ 0x[0-9a-fA-F]+\]")
-PRESETS = ("auto", "clean", "detail", "resize", "precision", "restore", "denoise",
+PRESETS = ("auto", "clean", "detail", "resize", "precision", "hdr10", "restore", "denoise",
            "regional", "deblur", "wavelet", "patch", "bm3d", "blind", "motion-deblur", "temporal", "stabilize", "multiframe", "multiframe-local", "multiframe-gpu")
 IMAGES = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
 VIDEOS = {".mp4", ".mkv", ".mov", ".avi", ".webm"}
-VIDEO_ONLY = {"temporal", "stabilize", "multiframe", "multiframe-local", "multiframe-gpu"}
+VIDEO_ONLY = {"hdr10", "temporal", "stabilize", "multiframe", "multiframe-local", "multiframe-gpu"}
 ENV = dict(os.environ, LC_ALL="C", LANG="C", TZ="UTC")
 TIMEOUT_SECONDS = 3600
 MAX_CAPTURE = 8 * 1024 * 1024
@@ -185,6 +185,13 @@ def validate_reports(reports, image, scale, fps, preset):
             raise JobError("Missing or inconsistent native BM3D report", reports)
     elif bm:
         raise JobError("Unexpected native BM3D report", reports)
+    hdr=[r for r in reports if "hdr10" in r]
+    if preset=="hdr10":
+        if (len(hdr)!=1 or hdr[0].get("hdr10")!="static_metadata" or hdr[0].get("metadata_exact") is not True
+                or hdr[0].get("scaled_sample_exact") is not True or hdr[0].get("sample_exact") is not (scale==1) or type(hdr[0].get("frames")) is not int
+                or hdr[0]["frames"]!=guard["input_frames"]):
+            raise JobError("Missing or invalid HDR10 report",reports)
+    elif hdr:raise JobError("Unexpected HDR10 report",reports)
     precise=[r for r in reports if "precision" in r]
     if preset=="precision":
         if (len(precise)!=1 or precise[0].get("precision")!="native_depth_resize"
@@ -197,7 +204,7 @@ def validate_reports(reports, image, scale, fps, preset):
     local=[r for r in reports if "local_fusion" in r]
     if preset in ("multiframe-local","multiframe-gpu"):
         if (len(local)!=1 or local[0].get("local_fusion") is not True
-                or local[0].get("backend")!=("cuda-cubic" if preset.endswith("-gpu") else "cpu")
+                or local[0].get("backend")!=("cuda-local" if preset.endswith("-gpu") else "cpu")
                 or local[0].get("frames")!=guard["input_frames"]
                 or not isinstance(local[0].get("phases"),list) or len(local[0]["phases"])!=4
                 or any(type(x) is not int or x<0 for x in local[0]["phases"])):
@@ -212,7 +219,7 @@ def validate_reports(reports, image, scale, fps, preset):
                 or type(dc[0].get("processed_frames")) is not int
                 or not 0<=dc[0]["processed_frames"]<=count
                 or type(dc[0].get("kernel_id_sum")) is not int
-                or not dc[0]["processed_frames"]<=dc[0]["kernel_id_sum"]<=9*dc[0]["processed_frames"]):
+                or not dc[0]["processed_frames"]<=dc[0]["kernel_id_sum"]<=12*dc[0]["processed_frames"]):
             raise JobError("Missing or invalid deconvolution report", reports)
     elif dc:
         raise JobError("Unexpected deconvolution report",reports)
@@ -269,7 +276,7 @@ def doctor(engine):
         available_f = {x.split()[1] for x in f.stdout.splitlines() if len(x.split()) >= 2}
         available_e = {x.split()[1] for x in e.stdout.splitlines() if len(x.split()) >= 2}
         filters = [x for x in required if x not in available_f]
-        encoders = [x for x in ("png", "pgm", "ffv1", "flac", "libx264", "aac", "rawvideo") if x not in available_e]
+        encoders = [x for x in ("png", "pgm", "ffv1", "flac", "libx264", "libx265", "aac", "rawvideo") if x not in available_e]
     ready = engine.is_file() and os.access(engine, os.X_OK)
     if ready:
         versions["engine"] = first_line([engine, "--version"])

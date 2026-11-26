@@ -313,7 +313,7 @@ pub fn encode_native(
             if preset == "blind" {
                 crate::blind::blind(&buffer[..n], w, h)?
             } else {
-                crate::deconv::restore(&buffer[..n], w, h, true)?
+                crate::direction::restore(&buffer[..n], w, h)?
             }
         };
         buffer[..n].copy_from_slice(&restored);

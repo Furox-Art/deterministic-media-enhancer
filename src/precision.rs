@@ -86,9 +86,16 @@ fn frame_side_data(path: &str) -> Result<()> {
     }
     Ok(())
 }
-fn digest(path: &str, pix: &str) -> Result<Vec<u8>> {
+pub(crate) fn digest(path: &str, pix: &str) -> Result<Vec<u8>> {
+    scaled_digest(path, pix, 1)
+}
+pub(crate) fn scaled_digest(path: &str, pix: &str, scale: usize) -> Result<Vec<u8>> {
     let mut c = ff();
+    c.arg("-noautorotate");
     input(&mut c, path)?;
+    if scale > 1 {
+        c.args(["-vf", &resize(scale)]);
+    }
     c.args([
         "-map",
         "0:v:0",

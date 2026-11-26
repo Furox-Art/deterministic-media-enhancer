@@ -34,6 +34,25 @@ with tempfile.TemporaryDirectory(prefix="dme-advanced-") as tmp:
                 assert report["pixel_format"]==f"yuv444p{depth}le" and report["sample_exact"]==(scale==1)
             invoke(source,r/"invalid.mp4","precision",ok=False)
             assert not (r/"invalid.mp4").exists()
+    # HDR10 static metadata, lossless native-depth pixels, repeated encoding.
+    for pix in ("yuv420p10le","yuv444p10le"):
+        hdr=r/(pix+".mkv")
+        ff("-f","lavfi","-i",f"testsrc2=s=64x48:r=24,format={pix}","-t","0.125",
+           "-c:v","libx265","-pix_fmt",pix,"-threads","1","-color_range","tv",
+           "-colorspace","bt2020nc","-color_trc","smpte2084","-color_primaries","bt2020",
+           "-x265-params","lossless=1:pools=none:frame-threads=1:log-level=error:asm=0:hdr10=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,1):max-cll=1000,400",hdr)
+        for scale in (1,2):
+            a=invoke(hdr,r/f"{pix}-{scale}-a.mkv","hdr10",scale)
+            b=invoke(hdr,r/f"{pix}-{scale}-b.mkv","hdr10",scale)
+            assert a["sha256"]==b["sha256"]
+            report=next(x for x in a["reports"] if "hdr10" in x)
+            assert report["metadata_exact"] and report["scaled_sample_exact"] and report["sample_exact"]==(scale==1)
+        invoke(hdr,r/"bad-hdr.mp4","hdr10",ok=False)
+        assert not (r/"bad-hdr.mp4").exists()
+        invoke(hdr,r/"bad-hdr-precision.mkv","precision",ok=False)
+        assert not (r/"bad-hdr-precision.mkv").exists()
+    invoke(source,r/"non-pq.mkv","hdr10",ok=False)
+    assert not (r/"non-pq.mkv").exists()
     for i,(dx,dy) in enumerate([(0,0),(1,0),(0,1),(1,1),(0,0),(1,0)]):
         raw=bytearray()
         for y in range(80):
@@ -54,6 +73,7 @@ with tempfile.TemporaryDirectory(prefix="dme-advanced-") as tmp:
         for i in range(2):
             g=invoke(source,r/f"gpu-{i}.mkv","multiframe-gpu",2)
             assert g["sha256"]==a["sha256"]
+            assert next(x for x in g["reports"] if "local_fusion" in x)["phases"]==phase
         print("CUDA and CPU video SHA256 equal:",a["sha256"],"phases",phase)
     # Both deconvolution modes must emit validated reports and deterministic outputs.
     for preset in ("blind","motion-deblur"):

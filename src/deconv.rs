@@ -1,5 +1,7 @@
 //! Bounded, candidate-PSF inverse restoration. Not unrestricted blind PSF identification.
+#[cfg(test)]
 use crate::media::*;
+#[cfg(test)]
 const KERNELS: &[(i32, i32, i32)] = &[
     (1, 0, 1),
     (0, 1, 1),
@@ -34,7 +36,7 @@ fn blur(p: &[i32], w: usize, h: usize, k: (i32, i32, i32)) -> Vec<i32> {
         })
         .collect()
 }
-fn inverse(src: &[i32], w: usize, h: usize, k: (i32, i32, i32)) -> Vec<i32> {
+pub(crate) fn inverse(src: &[i32], w: usize, h: usize, k: (i32, i32, i32)) -> Vec<i32> {
     let mut p = src.to_vec();
     // Bounded regularized fixed-point Landweber iteration, symmetric kernel.
     // Clamp extension is used at boundaries; this is an approximate adjoint there.
@@ -49,6 +51,7 @@ fn inverse(src: &[i32], w: usize, h: usize, k: (i32, i32, i32)) -> Vec<i32> {
     }
     p
 }
+#[cfg(test)]
 fn stats(src: &[i32], p: &[i32], w: usize, h: usize, k: (i32, i32, i32)) -> (i64, i64, i64) {
     let pred = blur(p, w, h, k);
     let mut residual = 0i64;
@@ -73,6 +76,7 @@ fn stats(src: &[i32], p: &[i32], w: usize, h: usize, k: (i32, i32, i32)) -> (i64
         changes * 100 / n,
     )
 }
+#[cfg(test)]
 pub fn restore(src: &[u8], w: usize, h: usize, motion: bool) -> Result<(Vec<u8>, i64)> {
     if w < 32 || h < 32 || w.checked_mul(h) != Some(src.len()) || src.len() > 2073600 {
         return err("Deconvolution requires 32x32 to 2073600 pixels");

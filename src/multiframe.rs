@@ -281,6 +281,18 @@ fn patch_ok(a: &Rgb, b: &Rgb, nx: i32, ny: i32, s: Shift) -> bool {
     }
     (0..3).all(|c| bias[c].abs() <= 5 * n && abs[c] <= 6 * n)
 }
+fn tile_shifts(a: &Rgb, ns: &[&Rgb], tx: i32, ty: i32) -> Vec<Shift> {
+    ns.iter()
+        .map(|b| {
+            let mut s = reg_tile(a, b, tx, ty);
+            if s.accepted {
+                let r = reg_tile(b, a, tx, ty);
+                s.accepted = r.accepted && (s.dx + r.dx).abs() <= 1 && (s.dy + r.dy).abs() <= 1;
+            }
+            s
+        })
+        .collect()
+}
 fn local_fuse(a: &Rgb, ns: &[&Rgb], patch: bool) -> (Rgb, [u64; 4]) {
     let out = fuse(a, None, None, &mut Stats::default());
     local_with_base(a, ns, patch, out)
@@ -289,18 +301,7 @@ fn local_with_base(a: &Rgb, ns: &[&Rgb], patch: bool, mut out: Rgb) -> (Rgb, [u6
     let mut phases = [0u64; 4];
     for ty in (0..a.h).step_by(TILE as usize) {
         for tx in (0..a.w).step_by(TILE as usize) {
-            let shifts: Vec<_> = ns
-                .iter()
-                .map(|b| {
-                    let mut s = reg_tile(a, b, tx, ty);
-                    if s.accepted {
-                        let r = reg_tile(b, a, tx, ty);
-                        s.accepted =
-                            r.accepted && (s.dx + r.dx).abs() <= 1 && (s.dy + r.dy).abs() <= 1;
-                    }
-                    s
-                })
-                .collect();
+            let shifts = tile_shifts(a, ns, tx, ty);
             for y in 2 * ty..2 * (ty + TILE).min(a.h) {
                 for x in 2 * tx..2 * (tx + TILE).min(a.w) {
                     let phase = (x % 2 + 2 * (y % 2)) as usize;
@@ -486,7 +487,7 @@ impl GpuCubic {
         }
         let mut child = ChildGuard(
             std::process::Command::new(helper)
-                .args([w.to_string(), h.to_string()])
+                .args([w.to_string(), h.to_string(), "fusion-v2".into()])
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .spawn()?,
@@ -500,21 +501,39 @@ impl GpuCubic {
             checked: false,
         })
     }
-    fn frame(&mut self, center: &Rgb) -> Result<Rgb> {
-        self.input
-            .as_mut()
-            .ok_or("Closed CUDA stdin")?
-            .write_all(&center.pixels)?;
+    fn frame(&mut self, center: &Rgb, ns: &[&Rgb]) -> Result<(Rgb, [u64; 4])> {
+        if ns.len() > 4 {
+            return err("Too many CUDA neighbors");
+        }
+        let input = self.input.as_mut().ok_or("Closed CUDA stdin")?;
+        input.write_all(&[ns.len() as u8])?;
+        input.write_all(&center.pixels)?;
+        for n in ns {
+            input.write_all(&n.pixels)?;
+        }
         let mut out = Rgb::new(center.w * 2, center.h * 2);
         self.output.read_exact(&mut out.pixels)?;
+        let mut flags = vec![0u8; out.pixels.len() / 3];
+        self.output.read_exact(&mut flags)?;
+        let mut phases = [0u64; 4];
+        for (i, &flag) in flags.iter().enumerate() {
+            let x = i % (out.w as usize);
+            let y = i / (out.w as usize);
+            if flag > 3 || (flag > 0 && flag as usize != x % 2 + 2 * (y % 2)) {
+                return err("Invalid CUDA phase flag");
+            }
+            if flag > 0 {
+                phases[flag as usize] += 1
+            }
+        }
         if !self.checked {
-            let cpu = fuse(center, None, None, &mut Stats::default());
-            if cpu.pixels != out.pixels {
-                return err("CUDA first-frame CPU comparison mismatch");
+            let (cpu, expected) = local_fuse(center, ns, true);
+            if cpu.pixels != out.pixels || phases != expected {
+                return err("CUDA first-frame CPU fusion mismatch");
             }
             self.checked = true;
         }
-        Ok(out)
+        Ok((out, phases))
     }
     fn finish(mut self) -> Result<()> {
         self.input.take();
@@ -634,8 +653,7 @@ pub fn encode_multi(path: &str, out: &str, t: &Timeline, mode: &str) -> Result<(
             };
             let ns: Vec<_> = previous.iter().rev().chain(queue.iter()).collect();
             let (enhanced, phases) = if let Some(g) = gpu.as_mut() {
-                let base = g.frame(&center)?;
-                local_with_base(&center, &ns, true, base)
+                g.frame(&center, &ns)?
             } else {
                 local_fuse(&center, &ns, true)
             };
@@ -670,7 +688,7 @@ pub fn encode_multi(path: &str, out: &str, t: &Timeline, mode: &str) -> Result<(
         eprintln!(
             r#"{{"local_fusion":true,"backend":"{}","phases":[{},{},{},{}],"frames":{}}}"#,
             if mode == "multiframe-gpu" {
-                "cuda-cubic"
+                "cuda-local"
             } else {
                 "cpu"
             },

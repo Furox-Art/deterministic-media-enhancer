@@ -22,7 +22,7 @@ For multiple explicitly authorized files, create a local JSON manifest as descri
 
 ## Advanced modes
 
-For high-bit-depth input requiring preservation, select `precision` only; do not silently downgrade if the mode rejects HDR side data or unsupported formats. For blur try `blind` or `motion-deblur` explicitly and inspect the result, including abstention reports. For 2x video use `multiframe-local` where local registration is useful; use `multiframe-gpu` only if the optional CUDA helper is installed and verified. CUDA accelerates only cubic reconstruction, not the entire pipeline. Never claim recovery of ground truth or guaranteed improvement.
+For high-bit-depth input requiring preservation, select `precision`; for supported static HDR10 select `hdr10` (10-bit BT.2020/PQ MKV only). Do not silently downgrade if either rejects metadata or format. For blur try `blind` or `motion-deblur` explicitly and inspect the result, including abstention reports. For 2x video use `multiframe-local` where local registration is useful; use `multiframe-gpu` only if the optional CUDA helper is installed and verified. CUDA accelerates local registration, cubic reconstruction, patch rejection and fusion; other presets and codecs remain CPU. Local fusion can be worse than Lanczos on real area-downsampled video; prefer resize if quality evidence is absent. Never claim recovery of ground truth or guaranteed improvement.
 
 ## Execution limits
 

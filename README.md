@@ -2,9 +2,9 @@
 
 An AI agent skill for local, offline image and video enhancement without trained models, cloud services, telemetry or usage fees. No desktop application or GUI. Start with [SKILL.md](SKILL.md).
 
-## v1.0.0-rc3 — native deconvolution, local super-resolution, precision resize and optional CUDA
+## v1.0.0-rc4 — directional PSF, static HDR10, complete local-fusion CUDA kernels and real-reference QA
 
-The Rust CLI uses FFmpeg CPU filters and has no third-party Rust crate dependencies. Supported scales: 1x, 2x, 4x, 8x. Image output: PNG. Video output: FFV1/FLAC MKV or H.264/AAC MP4. Existing outputs are never intentionally overwritten. The CLI is the underlying engine for the agent skill; the supported agent entry point is scripts/agent.py.
+The Rust CLI uses FFmpeg CPU filters and has no third-party Rust crate dependencies. Supported scales: 1x, 2x, 4x, 8x. Image output: PNG. Video output: FFV1/FLAC MKV, H.264/AAC MP4, or explicit static HDR10 lossless HEVC/FLAC MKV. Existing outputs are never intentionally overwritten. The CLI is the underlying engine for the agent skill; the supported agent entry point is scripts/agent.py.
 
 | Preset | Operation |
 | --- | --- |
@@ -25,7 +25,7 @@ The Rust CLI uses FFmpeg CPU filters and has no third-party Rust crate dependenc
 
 ## Build on Linux
 
-Dependencies: Rust 1.85+ with Cargo (including the platform linker; tested with Rust 1.99.0), Python 3, FFmpeg and FFprobe (with libx264). A C++ compiler, CMake, Qt, Python package downloads and Rust crate downloads are not required. Build with bash scripts/build.sh; it checks existing local dependencies, builds offline with the lockfile, runs unit and integration tests, and installs the verified native engine at build/skill/dme.
+Dependencies: Rust 1.85+ with Cargo (including the platform linker; tested with Rust 1.99.0), Python 3, FFmpeg and FFprobe (with libx264 and libx265). A C++ compiler, CMake, Qt, Python package downloads and Rust crate downloads are not required. Build with bash scripts/build.sh; it checks existing local dependencies, builds offline with the lockfile, runs unit and integration tests, and installs the verified native engine at build/skill/dme.
 
 ```sh
 bash scripts/build.sh
@@ -79,11 +79,11 @@ Currently limited to near-zero-start CFR videos, 2x spatial scale, original FPS,
 
 ## Determinism
 
-CPU by default, optional CUDA cubic stage, restricted FFmpeg CPU flags, single-thread processing, bitexact flags, fixed presets, source metadata removed, file/pipe protocol whitelist. Reproducibility tests compare whole-file bytes and analysis reports across repeated runs in the same environment. Tests also check expected decisions on synthetic patterns. Cross-version/hardware bit identity is not guaranteed. Upscaling is not recovery of lost detail. PNG/FFV1 outputs are losslessly encoded after pixel conversion and filters, not necessarily source-preserving. MP4 is lossy. Alpha processing, HDR/color management, orientation, VFR, and uncommon media require further validation. Audio is re-encoded; subtitles and metadata are not preserved.
+CPU by default, optional CUDA local registration and fusion, restricted FFmpeg CPU flags, single-thread processing, bitexact flags, fixed presets, source metadata removed, file/pipe protocol whitelist. Reproducibility tests compare whole-file bytes and analysis reports across repeated runs in the same environment. Tests also check expected decisions on synthetic patterns. Cross-version/hardware bit identity is not guaranteed. Upscaling is not recovery of lost detail. PNG/FFV1 outputs are losslessly encoded after pixel conversion and filters, not necessarily source-preserving. MP4 is lossy. Alpha processing, HDR/color management, orientation, VFR, and uncommon media require further validation. Audio is re-encoded; subtitles and metadata are not preserved.
 
 ## Portable reproducibility verification
 
-Run the following entirely locally; copy the same two generated fixture files to another authorized physical machine, without regenerating them there. Build the same source revision on each machine.
+Run the following entirely locally; copy the same three generated fixture files to another authorized physical machine, without regenerating them there. Build the same source revision on each machine.
 
 ```sh
 python3 scripts/repro.py prepare --fixtures build/repro-fixtures
@@ -93,25 +93,26 @@ python3 scripts/repro.py record --fixtures build/repro-fixtures --output build/h
 python3 scripts/repro.py compare build/host-a.json build/host-b.json
 ```
 
-The recorder checks the fixed 4096-byte integer-kernel golden SHA-256, renders each of 22 CPU cases twice, validates reports, and compares encoded bytes, decoded high-bit-depth raster/PCM and canonical report hashes. It fingerprints source, fixture files, engine and FFmpeg/FFprobe executables and their ldd-resolved libraries where available. The comparator rejects malformed or incomplete manifests and mismatched source/fixture identities. CPU architecture/model and affinity are observational metadata, not independently authenticated hardware evidence. Different toolchain hashes prevent attribution solely to hardware; matching outputs establish repeatability only for the tested cases. libx264 assembly is disabled as an additional CPU-dispatch restriction. External codecs and libraries may still differ across platforms. Independent physical-machine testing is not implied by same-machine affinity tests.
+The recorder checks the fixed 4096-byte integer-kernel golden SHA-256, renders each of 24 CPU cases twice, validates reports, and compares encoded bytes, decoded high-bit-depth raster/PCM and canonical report hashes. It fingerprints source, fixture files, engine and FFmpeg/FFprobe executables and their ldd-resolved libraries where available. The comparator rejects malformed or incomplete manifests and mismatched source/fixture identities. CPU architecture/model and affinity are observational metadata, not independently authenticated hardware evidence. Different toolchain hashes prevent attribution solely to hardware; matching outputs establish repeatability only for the tested cases. libx264 assembly is disabled as an additional CPU-dispatch restriction. External codecs and libraries may still differ across platforms. Independent physical-machine testing is not implied by same-machine affinity tests.
 
 ## Advanced explicit presets
 
 - `blind`: conservative step-edge PSF identification over axial 3/5/7-tap motion kernels and symmetric separable binomial kernels. Eight fixed-point regularized projected Landweber iterations; abstains on ambiguous evidence; local extrema and ±16-code-value bounds. Not unrestricted blind deconvolution.
-- `motion-deblur`: bounded candidate scoring for horizontal, vertical and diagonal 3/5-tap uniform motion PSFs; six regularized iterations with ±24-code-value limits. No general spatially varying motion field, rotation blur, rolling shutter or severe blur recovery. Both inverse modes operate on 8-bit luma and are not selected automatically.
+- `motion-deblur`: conservative projected step-edge fitting over twelve uniform motion PSFs (axis/diagonal 3/5-tap, four oblique 3-tap directions); six regularized iterations with ±24-code-value limits. No general spatially varying motion field, rotation blur, rolling shutter or severe blur recovery. Both inverse modes operate on 8-bit luma and are not selected automatically.
 - `multiframe-local`: five-frame window, 16x16 LR local half-pixel registration, forward/reverse consistency and 5x5 patch rejection, all three missing 2x sampling phases where observations permit. Center samples preserved before encoding; fallback is cubic. Original global `multiframe` remains available.
-- `multiframe-gpu`: same local fusion; only integer cubic reconstruction is offloaded to CUDA. CPU/GPU first-frame comparison required, explicit failure when helper unavailable. Build optional helper after CPU build: `bash scripts/build-gpu.sh` (default sm_89; override DME_CUDA_ARCH for a supported GPU). Requires existing nvcc and CUDA runtime, no downloads. Other GPU kernels and end-to-end speedup are not established.
+- `multiframe-gpu`: same local fusion; integer luma, local bidirectional registration, cubic, patch rejection and blending are offloaded to CUDA. CPU/GPU first-frame comparison required, explicit failure when helper unavailable. Build optional helper after CPU build: `bash scripts/build-gpu.sh` (default sm_89; override DME_CUDA_ARCH for a supported GPU). Requires existing nvcc and CUDA runtime, no downloads. Decoding, encoding, other restoration presets, and verification remain CPU-side. Local measured speedup is workload-specific.
 - `precision`: explicit native pixel-format resize for supported 16-bit RGB/RGBA/gray stills or planar 10/12/16-bit video to FFV1 MKV, original FPS only. Checks matching color tags and exact decoded samples at 1x; scales at native depth at 2x/4x/8x. PQ/HLG tags preserved where supported; unsupported stream/frame side data, including mastering display and dynamic HDR metadata, rejected rather than silently lost. Not HDR tone mapping or HDR-aware restoration. Other presets may reduce depth or discard alpha.
+- `hdr10`: explicit limited-range BT.2020/PQ 10-bit planar video to lossless HEVC MKV with libx265, original FPS. Requires constant mastering display and content-light side data on every frame; exact integer-rational metadata and decoded scaled samples verified before publication. Rejects unsupported stream/frame side data and changing HDR metadata. H.26x unregistered vendor SEI is not preserved. Not HDR10+, Dolby Vision, tone mapping, or HDR-aware denoising.
 
-Run `build/skill/dme --synthetic-benchmark 1000` for 1,000 synthetic denoising variants and 1,000 four-frame synthetic local-fusion variants (one center evaluated each). This is a kernel sweep, not a 2,000 independent real-media corpus or encoded video benchmark. Report failures as well as aggregate SSE; do not infer universal quality. See references/validation-rc3.md for measured results. For authorized paired real-media corpora, use scripts/corpus.py with the manifest documented in references/commands.md (up to 10,000 pairs).
+Run `build/skill/dme --synthetic-benchmark 1000` for 1,000 synthetic denoising variants and 1,000 four-frame synthetic local-fusion variants (one center evaluated each). This is a kernel sweep, not a 2,000 independent real-media corpus or encoded video benchmark. Report failures as well as aggregate SSE; do not infer universal quality. See references/validation-rc3.md for measured results. For authorized paired real-media corpora, use scripts/corpus.py with the manifest documented in references/commands.md (up to 10,000 pairs). For archive-based grayscale reference sweeps, use scripts/reference_benchmark.py (optional Pillow QA dependency; no dataset downloads in the skill). See references/validation-rc4.md for real-image, video, HDR and CUDA measurements and negative results.
 
 ## Planned features
 
 - User-defined ROI and scene-adaptive restoration, chroma/alpha and temporal quality validation.
-- Blind/motion deconvolution, broader native BM3D quality/format coverage and more advanced local motion and iterative multi-frame reconstruction.
+- Broader blind/motion deconvolution, native BM3D quality/format coverage and multi-frame reconstruction for area-sampled real video; no guarantee of improvement.
 - Agent-driven progress, cancellation and expanded validation.
 - Advanced scene-aware motion restoration, color management and higher bit-depth validation.
-- Reproducible toolchain and cross-platform builds; GPU only after determinism validation.
+- Reproducible toolchain and independent physical-machine verification; GPU kernels for remaining restoration algorithms.
 
 No network access is needed by the application itself for local inputs. Installing dependencies and using GitHub may require internet access.
 
