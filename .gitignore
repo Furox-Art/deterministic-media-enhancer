@@ -1,5 +1,8 @@
-/build/
+﻿/build/
 /target/
 __pycache__/
 /output/
 *.log
+dist/
+build/
+*.egg-info/
