@@ -24,7 +24,7 @@ regional: local threshold-based smoothing.
 deblur: approximate fixed-kernel inverse filtering.
 wavelet: three-level wavelet denoising.
 patch: experimental single-patch transform denoising using the BM3D basic estimator (group=1).
-bm3d: experimental grouped basic estimator (group=4), not two-pass BM3D. Both require at least 32x32 pixels, convert to 8-bit YUV 4:4:4, operate on luma and may remove real texture. Neither is included in auto.
+bm3d: native two-stage BM3D-family integer Walsh-Hadamard variant, not the canonical reference implementation. Both require at least 32x32 pixels, convert to 8-bit YUV 4:4:4, operate on luma and may remove real texture. Native bm3d supports at most 2,073,600 source pixels; video must be near-zero-start CFR with at least three frames. JSON reports frames, processed_frames and sigma_sum. Neither is included in auto.
 temporal: temporal averaging (video only).
 stabilize: block-motion stabilization (video only).
 multiframe: experimental 2x video fusion; requires original FPS, near-zero-start CFR, at least 3 frames, at most 2073600 input pixels, dimensions >=32x32.
@@ -39,6 +39,14 @@ JSON includes status, operation, engine/tool versions where available, reports a
 
 Global option: `--timeout-seconds 3600` before the subcommand (1–86400). Each subprocess is individually limited and its combined captured stdout/stderr must not exceed 8 MiB. The wrapper terminates its process group on timeout or overflow. Required image geometry/video timeline reports must be unique and accepted; duplicate keys, non-finite numbers and inconsistent luma/fallback reports are rejected. Results include `engine_sha256` and `tool_sha256` for FFmpeg/FFprobe. These executable hashes do not establish full machine or library identity.
 
+## Advanced presets
+
+`blind` and `motion-deblur`: bounded 8-bit inverse restoration; explicit only, minimum 32x32, maximum 2,073,600 source pixels, CFR video with near-zero start. Abstention possible. `multiframe-local` and `multiframe-gpu`: 2x, keep FPS, same source limits as multiframe; local five-frame fusion. GPU helper must be installed with scripts/build-gpu.sh; only cubic stage uses CUDA. `precision`: 16-bit stills and supported planar 10/12/16-bit MKV output, keep FPS, native-depth scaling and color tag checks. 1x checks exact decoded samples; rejects unsupported side data. Do not use legacy restoration presets to promise HDR/alpha preservation.
+
+## Cross-hardware comparison
+
+Use `python3 scripts/repro.py prepare --fixtures NEW_DIRECTORY` once. Copy the two fixture files unchanged and build identical source on each authorized machine. On each, run `python3 scripts/repro.py record --fixtures DIRECTORY --output NEW_MANIFEST.json`, then compare the two reports with `python3 scripts/repro.py compare A.json B.json`. Only generated fixture media are processed. The 22 CPU cases each run twice. The integer kernel also has a fixed SHA-256 reference. The comparator distinguishes source/fixture incompatibility, file/decoded/report differences and recorded toolchain/environment differences. Same-machine tests do not prove cross-hardware determinism; independently confirm the physical devices and keep claims limited to the tested cases.
+
 ## Batch manifest
 
 ```json
@@ -46,3 +54,7 @@ Global option: `--timeout-seconds 3600` before the subcommand (1–86400). Each 
 ```
 
 Run `python3 scripts/agent.py batch --manifest jobs.json --dry-run`, then without dry-run. Relative paths resolve against the manifest directory; absolute paths are allowed. The manifest is limited to 1 MiB and 1–100 jobs, in listed order. Each requires input/output; scale defaults to 1, preset to auto, fps to keep. FPS must be a string. All output parents must exist; duplicate canonical targets, unknown keys, existing outputs and invalid options reject the entire plan. Failed renders are isolated, later jobs run, successful files remain; status error and exit 1 indicate at least one failure. Dry-run creates no output and does not certify decodability. Results include ordered jobs, totals and per-job hashes or errors. The wrapper stages output until verification is complete and uses atomic no-replace publication. Hardlink-capable destination filesystem required.
+
+## Paired reference corpus
+
+Run `python3 scripts/corpus.py --manifest pairs.json --output NEW_REPORT.json` on authorized local inputs. Manifest example: `{"cases":[{"input":"noisy.png","reference":"clean.png","preset":"bm3d","scale":1}]}`. Relative paths resolve to the manifest directory; 1–10,000 explicitly listed pairs. It evaluates baseline resize and candidate against the same full grayscale reference, reports SSE/MSE/PSNR, hashes and failures, and rejects inconsistent geometry/frame count or decoded streams over 64 MiB per file. Caller must establish aligned frames and dataset provenance. This is not HDR/alpha/audio quality assessment or perceptual superiority proof.

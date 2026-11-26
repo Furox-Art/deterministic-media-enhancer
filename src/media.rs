@@ -266,7 +266,6 @@ pub const REGIONAL: &str = "format=yuv444p,smartblur=lr=1.2:ls=0.65:lt=8:cr=0.8:
 pub const DEBLUR:&str="format=yuv444p,convolution=0m='-1 -2 -1 -2 44 -2 -1 -2 -1':0rdiv=0.03125,unsharp=7:7:0.12:5:5:0";
 pub const WAVELET:&str="format=yuv444p,vaguedenoiser=threshold=2:method=garrote:nsteps=3:percent=75:planes=1:type=universal";
 pub const PATCH:&str="format=yuv444p,bm3d=sigma=48:block=8:bstep=4:group=1:range=9:mstep=2:thmse=0:estim=basic:planes=1";
-pub const BM3D:&str="format=yuv444p,bm3d=sigma=64:block=8:bstep=4:group=4:range=9:mstep=2:thmse=0:estim=basic:planes=1";
 pub const TEMPORAL: &str =
     "format=yuv444p,atadenoise=0a=0.015:0b=0.03:1a=0.012:1b=0.025:2a=0.012:2b=0.025:s=5:a=s";
 pub const STABILIZE: &str =
@@ -320,7 +319,7 @@ pub fn encoding(c: &mut Command, out: &str, image: bool) {
             "-pix_fmt",
             "yuv444p",
             "-x264-params",
-            "threads=1:lookahead-threads=1",
+            "threads=1:lookahead-threads=1:asm=0",
             "-c:a",
             "aac",
             "-b:a",

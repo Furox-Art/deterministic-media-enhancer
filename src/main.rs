@@ -1,6 +1,11 @@
 mod analysis;
+mod benchmark;
+mod blind;
+mod bm3d;
+mod deconv;
 mod media;
 mod multiframe;
+mod precision;
 mod video;
 use media::*;
 use std::{
@@ -13,6 +18,7 @@ const PRESETS: &[&str] = &[
     "clean",
     "detail",
     "resize",
+    "precision",
     "restore",
     "denoise",
     "regional",
@@ -20,9 +26,13 @@ const PRESETS: &[&str] = &[
     "wavelet",
     "patch",
     "bm3d",
+    "blind",
+    "motion-deblur",
     "temporal",
     "stabilize",
     "multiframe",
+    "multiframe-local",
+    "multiframe-gpu",
 ];
 fn absolute(p: &str) -> Result<String> {
     let p = PathBuf::from(p);
@@ -53,6 +63,18 @@ fn main_job() -> Result<()> {
         println!("{VERSION}");
         return Ok(());
     }
+    if args.len() == 2 && args[0] == "--synthetic-benchmark" {
+        let count: usize = args[1].parse()?;
+        if !(1..=10000).contains(&count) {
+            return err("Invalid benchmark count");
+        }
+        return benchmark::run(count);
+    }
+    if args.len() == 1 && args[0] == "--kernel-fixture" {
+        use std::io::Write;
+        std::io::stdout().write_all(&bm3d::fixture()?)?;
+        return Ok(());
+    }
     if (2..=3).contains(&args.len()) && args[0] == "--analyze" {
         let input = absolute(&args[1])?;
         let s = scale(args.get(2).map(String::as_str).unwrap_or("2"))?;
@@ -62,7 +84,7 @@ fn main_job() -> Result<()> {
         return Ok(());
     }
     if !(2..=5).contains(&args.len()) {
-        return err("Usage: dme INPUT OUTPUT [1|2|4|8] [auto|clean|detail|resize|restore|denoise|regional|deblur|wavelet|patch|bm3d|temporal|stabilize|multiframe] [keep|30|60|120]");
+        return err("Usage: dme INPUT OUTPUT [1|2|4|8] [auto|clean|detail|resize|precision|restore|denoise|regional|deblur|wavelet|patch|bm3d|blind|motion-deblur|temporal|stabilize|multiframe|multiframe-local|multiframe-gpu] [keep|30|60|120]");
     }
     let input = absolute(&args[0])?;
     let output = absolute(&args[1])?;
@@ -86,11 +108,20 @@ fn main_job() -> Result<()> {
     if (image && out_ext != "png") || (!image && !matches!(out_ext.as_str(), "mkv" | "mp4")) {
         return err("Unsupported output extension");
     }
-    if image && (fps > 0 || matches!(preset, "temporal" | "stabilize" | "multiframe")) {
+    if image
+        && (fps > 0
+            || matches!(
+                preset,
+                "temporal" | "stabilize" | "multiframe" | "multiframe-local" | "multiframe-gpu"
+            ))
+    {
         return err("Video-only operation requested for image");
     }
-    if preset == "multiframe" && (s != 2 || fps != 0) {
+    if preset.starts_with("multiframe") && (s != 2 || fps != 0) {
         return err("Multiframe requires 2x scale and keep FPS");
+    }
+    if preset == "precision" && fps != 0 {
+        return err("Precision mode requires original FPS");
     }
     let timeline = if image {
         None
@@ -122,7 +153,8 @@ fn main_job() -> Result<()> {
             eprintln!("{r}");
             f
         }
-        "temporal" | "stabilize" | "regional" | "deblur" | "wavelet" | "patch" | "bm3d" => {
+        "bm3d" | "blind" | "motion-deblur" | "precision" => baseline.clone(),
+        "temporal" | "stabilize" | "regional" | "deblur" | "wavelet" | "patch" => {
             let f = match preset {
                 "temporal" => TEMPORAL,
                 "stabilize" => STABILIZE,
@@ -130,7 +162,7 @@ fn main_job() -> Result<()> {
                 "deblur" => DEBLUR,
                 "wavelet" => WAVELET,
                 "patch" => PATCH,
-                _ => BM3D,
+                _ => unreachable!(),
             };
             format!("{f},{baseline}")
         }
@@ -153,8 +185,21 @@ fn main_job() -> Result<()> {
     }
     let stage = Stage::new(Path::new(&output))?;
     let mut candidate = stage.file(&format!("candidate.{out_ext}"))?;
-    if preset == "multiframe" {
-        multiframe::encode_multi(&input, &candidate, timeline.as_ref().unwrap())?
+    if preset == "precision" {
+        precision::encode_precision(&input, &candidate, image, s)?;
+    } else if preset.starts_with("multiframe") {
+        multiframe::encode_multi(&input, &candidate, timeline.as_ref().unwrap(), preset)?
+    } else if matches!(preset, "bm3d" | "blind" | "motion-deblur") {
+        bm3d::encode_native(
+            &input,
+            &candidate,
+            iw,
+            ih,
+            timeline.as_ref(),
+            s,
+            fps,
+            preset,
+        )?;
     } else {
         encode(&input, &candidate, &chain, image)?
     }

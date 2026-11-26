@@ -4,4 +4,4 @@ version = 4
 
 [[package]]
 name = "deterministic-media-enhancer"
-version = "1.0.0-rc1"
+version = "1.0.0-rc3"

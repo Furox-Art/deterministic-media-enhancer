@@ -80,6 +80,9 @@ def benchmark(root):
     if args.reference is None:
         assert rows["patch"]["sse"]<rows["resize"]["sse"],rows
         assert rows["patch"]["ssim_8x8"]>rows["resize"]["ssim_8x8"],rows
+        assert rows["bm3d"]["sse"] < rows["resize"]["sse"] * 0.5, rows
+        assert rows["bm3d"]["ssim_8x8"] > rows["resize"]["ssim_8x8"], rows
+        assert clean_controls["bm3d"]["mse"] < 2, clean_controls
     print(json.dumps({"reference":"local photograph" if args.reference else "synthetic pattern",
                       "dimensions":[W,H],"noise_sigma_fixture":8,"degraded":metrics(ref,degraded),
                       "presets":rows,"clean_controls":clean_controls,"scope":"grayscale controlled noise; not a general quality guarantee"},

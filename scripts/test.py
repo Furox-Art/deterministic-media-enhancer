@@ -10,7 +10,7 @@ engine = Path(sys.argv[1]).resolve()
 agent = root / "scripts/agent.py"
 shell_tests = ("reproducibility", "adaptive", "optimizer_integration",
                "restoration", "video", "multiframe")
-python_tests = ("agent", "batch", "hardening", "formats")
+python_tests = ("agent", "batch", "hardening", "formats", "advanced")
 jobs = [(name, ["bash", root / "tests" / (name + ".sh"), engine]) for name in shell_tests]
 jobs += [(name, [sys.executable, root / "tests" / (name + ".py"), agent, engine])
          for name in python_tests]

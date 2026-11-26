@@ -17,13 +17,13 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_ENGINE = ROOT / "build" / "skill" / "dme"
-EXPECTED_ENGINE = "DME 1.0.0-rc1"
+EXPECTED_ENGINE = "DME 1.0.0-rc3"
 FFMPEG_LOG = re.compile(r"^\[[^\]\r\n]+ @ 0x[0-9a-fA-F]+\]")
-PRESETS = ("auto", "clean", "detail", "resize", "restore", "denoise",
-           "regional", "deblur", "wavelet", "patch", "bm3d", "temporal", "stabilize", "multiframe")
+PRESETS = ("auto", "clean", "detail", "resize", "precision", "restore", "denoise",
+           "regional", "deblur", "wavelet", "patch", "bm3d", "blind", "motion-deblur", "temporal", "stabilize", "multiframe", "multiframe-local", "multiframe-gpu")
 IMAGES = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
 VIDEOS = {".mp4", ".mkv", ".mov", ".avi", ".webm"}
-VIDEO_ONLY = {"temporal", "stabilize", "multiframe"}
+VIDEO_ONLY = {"temporal", "stabilize", "multiframe", "multiframe-local", "multiframe-gpu"}
 ENV = dict(os.environ, LC_ALL="C", LANG="C", TZ="UTC")
 TIMEOUT_SECONDS = 3600
 MAX_CAPTURE = 8 * 1024 * 1024
@@ -173,6 +173,49 @@ def validate_reports(reports, image, scale, fps, preset):
                 or guard["target_fps"] != (0 if fps == "keep" else int(fps))
                 or (fps == "keep" and guard["input_frames"] != guard["output_frames"])):
             raise JobError("Invalid video timeline report", reports)
+    bm = [r for r in reports if "bm3d" in r]
+    if preset == "bm3d":
+        count = 1 if image else guard["input_frames"]
+        if (len(bm) != 1 or bm[0].get("bm3d") != "integer_wht_two_stage"
+                or not positive_int(bm[0].get("frames")) or bm[0]["frames"] != count
+                or type(bm[0].get("processed_frames")) is not int
+                or not 0 <= bm[0]["processed_frames"] <= count
+                or type(bm[0].get("sigma_sum")) is not int
+                or not 2*bm[0]["processed_frames"] <= bm[0]["sigma_sum"] <= 25*bm[0]["processed_frames"]+count-bm[0]["processed_frames"]):
+            raise JobError("Missing or inconsistent native BM3D report", reports)
+    elif bm:
+        raise JobError("Unexpected native BM3D report", reports)
+    precise=[r for r in reports if "precision" in r]
+    if preset=="precision":
+        if (len(precise)!=1 or precise[0].get("precision")!="native_depth_resize"
+                or precise[0].get("color_tags_match") is not True
+                or precise[0].get("sample_exact") is not (scale==1)
+                or not isinstance(precise[0].get("pixel_format"),str)):
+            raise JobError("Missing or invalid precision report",reports)
+    elif precise:
+        raise JobError("Unexpected precision report",reports)
+    local=[r for r in reports if "local_fusion" in r]
+    if preset in ("multiframe-local","multiframe-gpu"):
+        if (len(local)!=1 or local[0].get("local_fusion") is not True
+                or local[0].get("backend")!=("cuda-cubic" if preset.endswith("-gpu") else "cpu")
+                or local[0].get("frames")!=guard["input_frames"]
+                or not isinstance(local[0].get("phases"),list) or len(local[0]["phases"])!=4
+                or any(type(x) is not int or x<0 for x in local[0]["phases"])):
+            raise JobError("Missing or invalid local fusion report",reports)
+    elif local:
+        raise JobError("Unexpected local fusion report",reports)
+    dc = [r for r in reports if "deconvolution" in r]
+    if preset in ("blind","motion-deblur"):
+        count = 1 if image else guard["input_frames"]
+        if (len(dc)!=1 or dc[0].get("deconvolution")!=preset
+                or type(dc[0].get("frames")) is not int or dc[0]["frames"]!=count
+                or type(dc[0].get("processed_frames")) is not int
+                or not 0<=dc[0]["processed_frames"]<=count
+                or type(dc[0].get("kernel_id_sum")) is not int
+                or not dc[0]["processed_frames"]<=dc[0]["kernel_id_sum"]<=9*dc[0]["processed_frames"]):
+            raise JobError("Missing or invalid deconvolution report", reports)
+    elif dc:
+        raise JobError("Unexpected deconvolution report",reports)
     analyses = [r for r in reports if "selected" in r or "candidates" in r]
     if preset == "auto":
         if len(analyses) != 1:
@@ -253,7 +296,7 @@ def media_input(raw):
 def check_options(source, scale, preset, fps):
     if source.suffix.lower() in IMAGES and (preset in VIDEO_ONLY or fps != "keep"):
         raise JobError("Video-only operation requested for an image")
-    if preset == "multiframe" and (scale != 2 or fps != "keep"):
+    if preset.startswith("multiframe") and (scale != 2 or fps != "keep"):
         raise JobError("Multiframe requires 2x and keep FPS")
 
 
@@ -280,7 +323,13 @@ def process_job(engine, source, target, scale, preset, fps):
     engine_hash = fingerprint(engine)
     engine_version = first_line([engine, "--version"])
     ffmpeg_version = first_line(["ffmpeg", "-version"])
-    tool_hashes = {name: fingerprint(shutil.which(name)) for name in ("ffmpeg", "ffprobe")}
+    tool_paths = {name: Path(shutil.which(name)) for name in ("ffmpeg", "ffprobe")}
+    if preset=="multiframe-gpu":
+        helper=engine.with_name("dme-cuda")
+        if not helper.is_file() or not os.access(helper,os.X_OK):
+            raise JobError("CUDA helper missing; run scripts/build-gpu.sh")
+        tool_paths["dme-cuda"]=helper
+    tool_hashes = {name:fingerprint(path) for name,path in tool_paths.items()}
     with tempfile.TemporaryDirectory(prefix=".dme-agent-", dir=target.parent) as temp:
         staged = Path(temp) / ("media" + target.suffix.lower())
         result = run([engine, source, staged, scale, preset, fps])
@@ -291,7 +340,7 @@ def process_job(engine, source, target, scale, preset, fps):
             raise JobError("Engine did not publish a nonempty regular output", reports, diagnostics)
         digest, size = fingerprint(staged), staged.stat().st_size
         if (fingerprint(source) != initial_hash or fingerprint(engine) != engine_hash
-                or any(fingerprint(shutil.which(name)) != expected for name, expected in tool_hashes.items())):
+                or any(fingerprint(tool_paths[name]) != expected for name, expected in tool_hashes.items())):
             raise JobError("Source or toolchain changed during processing; output not published", reports, diagnostics)
         validate_reports(reports, source.suffix.lower() in IMAGES, scale, fps, preset)
         os.link(staged, target, follow_symlinks=False)
